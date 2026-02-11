@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": [
     "dist"
   ],
@@ -13,6 +19,9 @@
     "lint": "eslint src --ext .ts",
     "test": "jest --passWithNoTests"
   },
+  "repository": { "type": "git", "url": "git+https://github.com/danemadsen/message-nodes.git" },
+  "bugs": { "url": "https://github.com/danemadsen/message-nodes/issues" },
+  "homepage": "https://github.com/danemadsen/message-nodes#readme",
   "keywords": [
     "chat",
     "message",
