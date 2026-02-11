@@ -102,41 +102,41 @@ export function lastChild<T = string>(
 }
 
 /**
- * Deletes a message and all of its child messages from the mappings.
- * @param mappings A record mapping message IDs to ChatMessage objects.
- * @param id The ID of the parent message.
+ * Deletes a node and all of its child nodes from the mappings.
+ * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param id The ID of the parent node.
  */
-export function deleteMessage<T = string>(
+export function deleteNode<T = string>(
   mappings: Record<string, ChatMessage<T>>, 
   id: string
 ): void {
   if (!mappings[id]) {
-    console.warn(`Message with ID: ${id} does not exist.`);
+    console.warn(`Node with ID: ${id} does not exist.`);
     return;
   }
 
   const children = getChildren<T>(mappings, id);
 
   for (const child of children) {
-    deleteMessage<T>(mappings, child.id);
+    deleteNode<T>(mappings, child.id);
   }
 
   delete mappings[id];
 }
 
 /**
- * Adds a new message to the mappings with optional parent-child relationships.
- * @param mappings A record mapping message IDs to ChatMessage objects.
- * @param id The unique ID of the new message.
- * @param role The role associated with the message (e.g., "user", "assistant").
- * @param content The content of the message.
- * @param root The ID of the root message in the conversation thread (if applicable).
- * @param parent The ID of the parent message (if applicable).
- * @param child The ID of the child message (if applicable).
- * @param createTime The creation time of the message (defaults to current time).
- * @param updateTime The last update time of the message (defaults to current time).
+ * Adds a new node to the mappings with optional parent-child relationships.
+ * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param id The unique ID of the new node.
+ * @param role The role associated with the node (e.g., "user", "assistant").
+ * @param content The content of the node.
+ * @param root The ID of the root node in the conversation thread (if applicable).
+ * @param parent The ID of the parent node (if applicable).
+ * @param child The ID of the child node (if applicable).
+ * @param createTime The creation time of the node (defaults to current time).
+ * @param updateTime The last update time of the node (defaults to current time).
  */
-export function addMessage<T = string>(
+export function addNode<T = string>(
   mappings: Record<string, ChatMessage<T>>, 
   id: string,
   role: string,
@@ -148,12 +148,12 @@ export function addMessage<T = string>(
   updateTime: Date = new Date()
 ): void {
   if (mappings[id]) {
-    console.warn(`Message with ID: ${id} already exists.`);
+    console.warn(`Node with ID: ${id} already exists.`);
     return;
   }
 
   if (root && !mappings[root]) {
-    console.warn(`Root message with ID: ${root} does not exist.`);
+    console.warn(`Root node with ID: ${root} does not exist.`);
     return;
   }
 
@@ -162,7 +162,7 @@ export function addMessage<T = string>(
       mappings[parent]!.child = id;
     } 
     else {
-      console.warn(`Parent message with ID: ${parent} does not exist.`);
+      console.warn(`Parent node with ID: ${parent} does not exist.`);
       return;
     }
   }
@@ -172,7 +172,7 @@ export function addMessage<T = string>(
       mappings[child]!.parent = id;
     } 
     else {
-      console.warn(`Child message with ID: ${child} does not exist.`);
+      console.warn(`Child node with ID: ${child} does not exist.`);
       return;
     }
   }
@@ -187,4 +187,41 @@ export function addMessage<T = string>(
     createTime,
     updateTime
   };
+}
+
+/**
+ * Converts a node to a root node by setting its root property to its own ID and removing any parent-child relationships.
+ * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param id The ID of the node to convert to a root node.
+ */
+export function makeRoot<T = string>(
+  mappings: Record<string, ChatMessage<T>>, 
+  id: string
+): void {
+  if (!mappings[id]) {
+    console.warn(`Node with ID: ${id} does not exist.`);
+    return;
+  }
+
+  const node = mappings[id]!;
+  
+  // Remove parent-child relationships
+  if (node.parent) {
+    const parentNode = mappings[node.parent];
+    if (parentNode) {
+      parentNode.child = undefined;
+    }
+    node.parent = undefined;
+  }
+
+  if (node.child) {
+    const childNode = mappings[node.child];
+    if (childNode) {
+      childNode.parent = undefined;
+    }
+    node.child = undefined;
+  }
+
+  // Set root to its own ID
+  node.root = id;
 }
