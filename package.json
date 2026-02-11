@@ -1,5 +1,5 @@
 {
-  "name": "chat-nodes",
+  "name": "message-nodes",
   "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,7 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "description": "A library for managing chat nodes and their relationships.",
+  "description": "A library for managing message nodes and their relationships.",
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@eslint/json": "^0.14.0",

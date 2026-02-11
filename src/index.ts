@@ -1,4 +1,4 @@
-export interface ChatMessage<T = string> {
+export interface MessageNode<T = string> {
   id: string;
   role: string;
   content: T;
@@ -11,12 +11,12 @@ export interface ChatMessage<T = string> {
 
 /**
  * Checks if a node exists in the mappings.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The ID of the node to check.
  * @returns True if the node exists, false otherwise.
  */
 export function hasNode<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, MessageNode<T>>, 
   id: string
 ): boolean {
   return !!mappings[id];
@@ -24,27 +24,27 @@ export function hasNode<T = string>(
 
 /**
  * Retrieves a node from the mappings by its ID.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The ID of the node to retrieve.
- * @returns The ChatMessage object if found, or undefined if not found.
+ * @returns The MessageNode object if found, or undefined if not found.
  */
 export function getNode<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, MessageNode<T>>, 
   id: string
-): ChatMessage<T> | undefined {
+): MessageNode<T> | undefined {
   return mappings[id];
 }
 
 /**
  * Retrieves the root node of a conversation thread given any node ID.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The ID of the node to start from.
- * @returns The root ChatMessage object if found, or undefined if not found.
+ * @returns The root MessageNode object if found, or undefined if not found.
  */
 export function getRoot<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, MessageNode<T>>, 
   id: string
-): ChatMessage<T> | undefined {
+): MessageNode<T> | undefined {
   let current = mappings[id];
   if (!current) return undefined;
 
@@ -57,14 +57,14 @@ export function getRoot<T = string>(
 
 /**
  * Retrieves the conversation thread starting from the root message.
- * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param mappings A record mapping message IDs to MessageNode objects.
  * @param root The ID of the root message to start from.
- * @returns An array of ChatMessage objects representing the conversation thread.
+ * @returns An array of MessageNode objects representing the conversation thread.
  */
 export function getConversation<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   root: string
-): Array<ChatMessage<T>> {
+): Array<MessageNode<T>> {
   const rootNode = getNode(mappings, root);
   if (!rootNode) {
     console.warn(`Root message with ID: ${root} does not exist.`);
@@ -73,7 +73,7 @@ export function getConversation<T = string>(
 
   if (!rootNode.child) return [];
 
-  const conversation: Array<ChatMessage<T>> = [];
+  const conversation: Array<MessageNode<T>> = [];
   const seen = new Set<string>();
 
   let current = getNode(mappings, rootNode.child);
@@ -94,24 +94,24 @@ export function getConversation<T = string>(
 
 /**
  * Retrieves all ancestor messages of a given message ID.
- * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param mappings A record mapping message IDs to MessageNode objects.
  * @param id The ID of the message to start from.
- * @returns An array of ChatMessage objects representing the ancestors of the specified message ID.
+ * @returns An array of MessageNode objects representing the ancestors of the specified message ID.
  */
 export function getAncestry<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   id: string
-): Array<ChatMessage<T>> {
+): Array<MessageNode<T>> {
   const start = getNode(mappings, id);
   if (!start) {
     console.warn(`Message with ID: ${id} does not exist.`);
     return [];
   }
 
-  const out: Array<ChatMessage<T>> = [];
+  const out: Array<MessageNode<T>> = [];
   const seen = new Set<string>();
 
-  let current: ChatMessage<T> | undefined = start;
+  let current: MessageNode<T> | undefined = start;
   while (current) {
     if (seen.has(current.id)) {
       console.warn(`Cycle detected in ancestry at ID: ${current.id}`);
@@ -128,24 +128,24 @@ export function getAncestry<T = string>(
 
 /**
  * Retrieves all direct child messages of a given message ID.
- * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param mappings A record mapping message IDs to MessageNode objects.
  * @param id The ID of the parent message.
- * @returns An array of ChatMessage objects that are direct children of the specified message ID.
+ * @returns An array of MessageNode objects that are direct children of the specified message ID.
  */
 export function getChildren<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, MessageNode<T>>, 
   id: string
-): Array<ChatMessage<T>> {
+): Array<MessageNode<T>> {
   return Object.values(mappings).filter((msg) => msg.parent === id);
 }
 
 /**
  * Moves to the next child message of a given parent message.
- * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param mappings A record mapping message IDs to MessageNode objects.
  * @param parent The ID of the parent message.
  */
 export function nextChild<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   parent: string
 ): void {
   const parentNode = getNode(mappings, parent);
@@ -171,11 +171,11 @@ export function nextChild<T = string>(
 
 /**
  * Moves to the previous child message of a given parent message.
- * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param mappings A record mapping message IDs to MessageNode objects.
  * @param parent The ID of the parent message.
  */
 export function lastChild<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   parent: string
 ): void {
   const parentNode = getNode(mappings, parent);
@@ -201,12 +201,12 @@ export function lastChild<T = string>(
 
 /**
  * Sets the child of a parent message to a specified child message, ensuring that the parent-child relationship is valid.
- * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param mappings A record mapping message IDs to MessageNode objects.
  * @param parent The ID of the parent message.
  * @param child The ID of the child message to set.
  */
 export function setChild<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   parent: string,
   child: string | undefined
 ): void {
@@ -219,11 +219,11 @@ export function setChild<T = string>(
 
 /**
  * Deletes a node and all of its child nodes from the mappings.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The ID of the parent node.
  */
 export function deleteNode<T>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   id: string
 ): void {
   const seen = new Set<string>();
@@ -231,7 +231,7 @@ export function deleteNode<T>(
 }
 
 function _deleteNodeInternal<T>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   id: string,
   seen: Set<string>
 ): void {
@@ -270,11 +270,11 @@ function _deleteNodeInternal<T>(
 
 /**
  * Unlinks a node from its parent and child nodes, effectively isolating it in the conversation thread.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The ID of the node to unlink.
  */
 export function unlinkNode<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, MessageNode<T>>, 
   id: string
 ): void {
   const node = mappings[id];
@@ -296,7 +296,7 @@ export function unlinkNode<T = string>(
 
 /**
  * Adds a new node to the mappings with optional parent-child relationships.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The unique ID of the new node.
  * @param role The role associated with the node (e.g., "user", "assistant").
  * @param content The content of the node.
@@ -307,7 +307,7 @@ export function unlinkNode<T = string>(
  * @param updateTime The last update time of the node (defaults to current time).
  */
 export function addNode<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   id: string,
   role: string,
   content: T,
@@ -370,11 +370,11 @@ export function addNode<T = string>(
 
 /**
  * Converts a node to a root node by setting its root property to its own ID and removing any parent-child relationships.
- * @param mappings A record mapping node IDs to ChatMessage objects.
+ * @param mappings A record mapping node IDs to MessageNode objects.
  * @param id The ID of the node to convert to a root node.
  */
 export function makeRoot<T = string>(
-  mappings: Record<string, ChatMessage<T>>,
+  mappings: Record<string, MessageNode<T>>,
   id: string
 ): void {
   const node = getNode(mappings, id);

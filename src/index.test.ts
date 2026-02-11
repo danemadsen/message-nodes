@@ -1,6 +1,5 @@
 import {
   addNode,
-  ChatMessage,
   deleteNode,
   getAncestry,
   getChildren,
@@ -10,12 +9,13 @@ import {
   hasNode,
   lastChild,
   makeRoot,
+  MessageNode,
   nextChild,
   setChild,
   unlinkNode,
 } from "./index";
 
-function createMessage(id: string, parent?: string, child?: string): ChatMessage {
+function createMessage(id: string, parent?: string, child?: string): MessageNode {
   return {
     id,
     role: "user",
@@ -28,8 +28,8 @@ function createMessage(id: string, parent?: string, child?: string): ChatMessage
   };
 }
 
-function makeLinearMappings(): Record<string, ChatMessage> {
-  const mappings: Record<string, ChatMessage> = {};
+function makeLinearMappings(): Record<string, MessageNode> {
+  const mappings: Record<string, MessageNode> = {};
   // root -> a -> b -> c
   mappings["root"] = createMessage("root", undefined, "a");
   mappings["a"] = createMessage("a", "root", "b");
@@ -68,7 +68,7 @@ describe("getRoot", () => {
 });
 
 describe("getConversation", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -111,7 +111,7 @@ describe("getConversation", () => {
 });
 
 describe("getAncestry", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -149,7 +149,7 @@ describe("getAncestry", () => {
 });
 
 describe("getChildren", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -171,7 +171,7 @@ describe("getChildren", () => {
 });
 
 describe("setChild", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -201,7 +201,7 @@ describe("setChild", () => {
 });
 
 describe("nextChild", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -247,7 +247,7 @@ describe("nextChild", () => {
 });
 
 describe("lastChild", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -292,7 +292,7 @@ describe("lastChild", () => {
 });
 
 describe("unlinkNode", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -318,7 +318,7 @@ describe("unlinkNode", () => {
 });
 
 describe("deleteNode", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -371,7 +371,7 @@ describe("deleteNode", () => {
 });
 
 describe("makeRoot", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   beforeEach(() => {
     mappings = makeLinearMappings();
@@ -427,7 +427,7 @@ describe("makeRoot", () => {
 });
 
 describe("addNode", () => {
-  let mappings: Record<string, ChatMessage>;
+  let mappings: Record<string, MessageNode>;
 
   const d1 = new Date("2020-01-01T00:00:00.000Z");
   const d2 = new Date("2020-01-02T00:00:00.000Z");
