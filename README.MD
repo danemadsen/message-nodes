@@ -6,8 +6,6 @@ It’s designed for UIs that need:
 - a **linear “current conversation”** path (via `child` pointers), *and*
 - **branching alternatives** (multiple children share the same `parent`), like conversation regeneration trees.
 
----
-
 ## Install
 
 ```bash
@@ -17,8 +15,6 @@ yarn add message-node
 # or
 pnpm add message-node
 ```
-
----
 
 ## Data model
 
@@ -56,8 +52,6 @@ type Mappings<T = string> = Record<string, MessageNode<T>>;
 - **Branching** is represented by multiple nodes having `parent = someId`
 - The **active path** is represented by each node’s `child` pointer:
   - `root.child -> ... -> ...` gives the “current conversation” sequence
-
----
 
 ## Quick start
 
@@ -109,8 +103,6 @@ const thread = getConversation(mappings, "root");
 console.log(thread.map(m => `${m.role}: ${m.content}`));
 ```
 
----
-
 ## Core operations
 
 ### `hasNode(mappings, id)`
@@ -141,8 +133,6 @@ import { getRoot } from "message-node";
 
 const root = getRoot(mappings, "a1"); // -> node "root"
 ```
-
----
 
 ## Traversal helpers
 
@@ -178,8 +168,6 @@ import { getChildren } from "message-node";
 const options = getChildren(mappings, "u1"); // e.g. multiple assistant regenerations
 ```
 
----
-
 ## Branching + selecting the active child
 
 A node can have multiple children (branching), but only one is “active” via `parent.child`.
@@ -210,8 +198,6 @@ nextChild(mappings, "u1"); // move active selection forward
 lastChild(mappings, "u1"); // move active selection backward
 ```
 
----
-
 ## Editing and deletion
 
 ### `unlinkNode(mappings, id)`
@@ -241,8 +227,6 @@ import { deleteNode } from "message-node";
 deleteNode(mappings, "u1"); // removes u1 and all its branch descendants
 ```
 
----
-
 ## Making a node a new root
 
 ### `makeRoot(mappings, id)`
@@ -257,8 +241,6 @@ import { makeRoot } from "message-node";
 
 makeRoot(mappings, "u1"); // u1 becomes a new root; its subtree root ids are rewritten
 ```
-
----
 
 ## Recommended usage patterns
 
@@ -278,8 +260,6 @@ Your UI can derive:
 Most functions are intentionally “safe”:
 - they `console.warn` on invalid inputs or cycles
 - they avoid throwing and keep your app running
-
----
 
 ## API reference
 
