@@ -22,36 +22,75 @@ function createMessage(id: string, parent?: string, child?: string): ChatMessage
   };
 }
 
-describe("Chat tree utilities", () => {
+function makeLinearMappings(): Record<string, ChatMessage> {
+  const mappings: Record<string, ChatMessage> = {};
+  // root -> a -> b -> c
+  mappings["root"] = createMessage("root", undefined, "a");
+  mappings["a"] = createMessage("a", "root", "b");
+  mappings["b"] = createMessage("b", "a", "c");
+  mappings["c"] = createMessage("c", "b", undefined);
+  return mappings;
+}
+
+describe("getConversation", () => {
   let mappings: Record<string, ChatMessage>;
 
   beforeEach(() => {
-    mappings = {};
-
-    // root -> a -> b -> c
-    mappings["root"] = createMessage("root", undefined, "a");
-    mappings["a"] = createMessage("a", "root", "b");
-    mappings["b"] = createMessage("b", "a", "c");
-    mappings["c"] = createMessage("c", "b", undefined);
+    mappings = makeLinearMappings();
   });
 
-  test("getConversation returns linear thread from root", () => {
+  test("returns linear thread from root", () => {
     const convo = getConversation(mappings, "root");
     expect(convo.map((m) => m.id)).toEqual(["a", "b", "c"]);
   });
 
-  test("getConversation returns empty if root has no child", () => {
+  test("returns empty if root has no child", () => {
     mappings["loner"] = createMessage("loner");
     expect(getConversation(mappings, "loner")).toEqual([]);
   });
 
-  test("getChildren returns all direct children", () => {
+  test("returns empty if root id not in mappings", () => {
+    expect(getConversation(mappings, "missing-root")).toEqual([]);
+  });
+
+  test("stops traversal when child pointer is missing in mappings", () => {
+    // root -> a -> b -> c, but b.child points to missing node
+    mappings["b"]!.child = "zzz";
+    const convo = getConversation(mappings, "root");
+    expect(convo.map((m) => m.id)).toEqual(["a", "b"]); // stops when it can't resolve zzz
+  });
+});
+
+describe("getChildren", () => {
+  let mappings: Record<string, ChatMessage>;
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+  });
+
+  test("returns all direct children", () => {
     mappings["a2"] = createMessage("a2", "a");
     const children = getChildren(mappings, "a");
     expect(children.map((c) => c.id).sort()).toEqual(["a2", "b"]);
   });
 
-  test("nextChild switches active child pointer", () => {
+  test("returns empty if parent has no children", () => {
+    expect(getChildren(mappings, "c")).toEqual([]);
+  });
+
+  test("returns empty for unknown parent id", () => {
+    expect(getChildren(mappings, "ghost")).toEqual([]);
+  });
+});
+
+describe("nextChild", () => {
+  let mappings: Record<string, ChatMessage>;
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+  });
+
+  test("switches active child pointer to next sibling", () => {
     mappings["x"] = createMessage("x", "root");
     mappings["root"]!.child = "a"; // current = a
 
@@ -61,23 +100,91 @@ describe("Chat tree utilities", () => {
     expect(mappings["x"]!.parent).toBe("root");
   });
 
-  test("lastChild switches back to previous child", () => {
-    mappings["x"] = createMessage("x", "root");
-    mappings["root"]!.child = "x"; // currently last
-
-    lastChild(mappings, "root");
-
-    expect(mappings["root"]!.child).toBe("a");
-  });
-
-  test("nextChild warns if no next child", () => {
+  test("warns if no child found for parent (current child pointer not in children)", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    nextChild(mappings, "b"); // only one child "c"
+    mappings["root"]!.child = "not-a-real-child-id";
+
+    nextChild(mappings, "root");
+
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 
-  test("deleteNode removes node and all descendants", () => {
+  test("warns if no next child available (already at last sibling)", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    mappings["x"] = createMessage("x", "root");
+    mappings["root"]!.child = "x"; // last sibling (order depends on Object.values insertion)
+
+    // Ensure insertion order makes 'x' last:
+    // mappings was created root,a,b,c then we added x, so children of root are [a, x]
+    nextChild(mappings, "root");
+
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  test("does nothing (and warns) if parent id missing", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    nextChild(mappings, "ghost");
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("lastChild", () => {
+  let mappings: Record<string, ChatMessage>;
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+  });
+
+  test("switches active child pointer to previous sibling", () => {
+    mappings["x"] = createMessage("x", "root");
+    mappings["root"]!.child = "x"; // current = x (2nd)
+
+    lastChild(mappings, "root");
+
+    expect(mappings["root"]!.child).toBe("a");
+    expect(mappings["a"]!.parent).toBe("root"); // should already be true, but asserts consistency
+  });
+
+  test("warns if no child found for parent (current child pointer not in children)", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    mappings["root"]!.child = "not-a-real-child-id";
+
+    lastChild(mappings, "root");
+
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  test("warns if no previous child available (already at first sibling)", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    mappings["x"] = createMessage("x", "root");
+    mappings["root"]!.child = "a"; // first sibling
+
+    lastChild(mappings, "root");
+
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  test("does nothing (and warns) if parent id missing", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    lastChild(mappings, "ghost");
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("deleteNode", () => {
+  let mappings: Record<string, ChatMessage>;
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+  });
+
+  test("removes node and all descendants", () => {
     deleteNode(mappings, "a");
 
     expect(mappings["a"]).toBeUndefined();
@@ -86,14 +193,38 @@ describe("Chat tree utilities", () => {
     expect(mappings["root"]).toBeDefined();
   });
 
-  test("deleteNode warns for missing node", () => {
+  test("removes only that subtree when parent has multiple children", () => {
+    mappings["a2"] = createMessage("a2", "root");
+    // give a2 a descendant too
+    mappings["a2-child"] = createMessage("a2-child", "a2");
+
+    deleteNode(mappings, "a2");
+
+    expect(mappings["a2"]).toBeUndefined();
+    expect(mappings["a2-child"]).toBeUndefined();
+
+    // original chain intact
+    expect(mappings["a"]).toBeDefined();
+    expect(mappings["b"]).toBeDefined();
+    expect(mappings["c"]).toBeDefined();
+  });
+
+  test("warns for missing node", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     deleteNode(mappings, "ghost");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+});
 
-  test("makeRoot detaches node from parent and child", () => {
+describe("makeRoot", () => {
+  let mappings: Record<string, ChatMessage>;
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+  });
+
+  test("detaches node from parent and child and sets root=id", () => {
     makeRoot(mappings, "b");
 
     expect(mappings["b"]!.parent).toBeUndefined();
@@ -104,7 +235,18 @@ describe("Chat tree utilities", () => {
     expect(mappings["c"]!.parent).toBeUndefined();
   });
 
-  test("makeRoot warns if node missing", () => {
+  test("if node already has no parent/child, just sets root=id", () => {
+    mappings["solo"] = createMessage("solo", undefined, undefined);
+    mappings["solo"]!.root = "root";
+
+    makeRoot(mappings, "solo");
+
+    expect(mappings["solo"]!.root).toBe("solo");
+    expect(mappings["solo"]!.parent).toBeUndefined();
+    expect(mappings["solo"]!.child).toBeUndefined();
+  });
+
+  test("warns if node missing", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     makeRoot(mappings, "ghost");
     expect(warnSpy).toHaveBeenCalled();
@@ -118,29 +260,11 @@ describe("addNode", () => {
   const d1 = new Date("2020-01-01T00:00:00.000Z");
   const d2 = new Date("2020-01-02T00:00:00.000Z");
 
-  function createMessage(id: string, parent?: string, child?: string): ChatMessage {
-    return {
-      id,
-      role: "user",
-      content: id,
-      root: "root",
-      parent,
-      child,
-      createTime: new Date(),
-      updateTime: new Date(),
-    };
-  }
-
   beforeEach(() => {
-    mappings = {};
-    // root -> a -> b -> c
-    mappings["root"] = createMessage("root", undefined, "a");
-    mappings["a"] = createMessage("a", "root", "b");
-    mappings["b"] = createMessage("b", "a", "c");
-    mappings["c"] = createMessage("c", "b", undefined);
+    mappings = makeLinearMappings();
   });
 
-  test("addNode inserts new node and links parent", () => {
+  test("inserts new node and links parent", () => {
     addNode(mappings, "new", "assistant", "hi", "root", "c", undefined);
 
     expect(mappings["new"]).toBeDefined();
@@ -148,7 +272,7 @@ describe("addNode", () => {
     expect(mappings["new"]!.parent).toBe("c");
   });
 
-  test("addNode warns if ID already exists", () => {
+  test("warns if ID already exists", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     addNode(mappings, "a", "assistant", "dup", "root", undefined, undefined);
     expect(warnSpy).toHaveBeenCalled();
@@ -176,35 +300,21 @@ describe("addNode", () => {
 
     expect(mappings["d"]!.root).toBe("root");
     expect(mappings["d"]!.parent).toBe("c");
-    expect(mappings["c"]!.child).toBe("d"); // parent gets linked
+    expect(mappings["c"]!.child).toBe("d");
   });
 
   test("links provided child back to new node (sets child's parent)", () => {
-    // Insert "x" before "c" by making x's child be c
     addNode(mappings, "x", "assistant", "mid", "root", "b", "c", d1, d2);
 
     expect(mappings["x"]!.parent).toBe("b");
     expect(mappings["x"]!.child).toBe("c");
-    expect(mappings["b"]!.child).toBe("x");   // parent->child updated
-    expect(mappings["c"]!.parent).toBe("x");  // child->parent updated
-  });
-
-  test("warns and does nothing if id already exists", () => {
-    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-
-    addNode(mappings, "a", "user", "dup", "root", "root", undefined);
-
-    expect(warnSpy).toHaveBeenCalled();
-    // no changes: still points root -> a
-    expect(mappings["root"]!.child).toBe("a");
-    warnSpy.mockRestore();
+    expect(mappings["b"]!.child).toBe("x");
+    expect(mappings["c"]!.parent).toBe("x");
   });
 
   test("warns and does nothing if root does not exist", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-
     addNode(mappings, "x", "user", "badroot", "missing-root", "root", undefined);
-
     expect(warnSpy).toHaveBeenCalled();
     expect(mappings["x"]).toBeUndefined();
     warnSpy.mockRestore();
@@ -212,51 +322,38 @@ describe("addNode", () => {
 
   test("warns and does nothing if parent does not exist", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-
     addNode(mappings, "x", "user", "badparent", "root", "missing-parent", undefined);
-
     expect(warnSpy).toHaveBeenCalled();
     expect(mappings["x"]).toBeUndefined();
     warnSpy.mockRestore();
   });
 
-  test("warns and does nothing if child does not exist", () => {
+  test("warns and does nothing if child does not exist (BUT parent.child is already set)", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
 
     addNode(mappings, "x", "user", "badchild", "root", "b", "missing-child");
 
     expect(warnSpy).toHaveBeenCalled();
     expect(mappings["x"]).toBeUndefined();
-
-    // IMPORTANT: parent.child was set before the child check, and should remain changed
-    // (this test codifies current behavior—if you consider that a bug, we can change the implementation)
-    expect(mappings["b"]!.child).toBe("x");
+    expect(mappings["b"]!.child).toBe("x"); // codifies current behavior
 
     warnSpy.mockRestore();
   });
 
   test("persists createTime and updateTime parameters", () => {
     addNode(mappings, "t", "assistant", "time", "root", "c", undefined, d1, d2);
-
     expect(mappings["t"]!.createTime).toBe(d1);
     expect(mappings["t"]!.updateTime).toBe(d2);
   });
 
-  test("does not mutate provided root when both root+parent exist (root remains provided root)", () => {
-    addNode(mappings, "z", "user", "ok", "root", "a", undefined);
-    expect(mappings["z"]!.root).toBe("root");
-  });
-
   test("root auto-set happens when parent missing even if child is provided", () => {
-    // child exists, parent missing => treated as root
     addNode(mappings, "solo", "user", "s", "root", undefined, "a", d1, d2);
 
     expect(mappings["solo"]!.root).toBe("solo");
-    expect(mappings["a"]!.parent).toBe("solo"); // child relink still happens
+    expect(mappings["a"]!.parent).toBe("solo");
   });
 
   test("sets parent.child to new node even if parent already had a child (overwrites)", () => {
-    // root currently points to "a"
     addNode(mappings, "newFirst", "user", "n", "root", "root", undefined);
 
     expect(mappings["root"]!.child).toBe("newFirst");
