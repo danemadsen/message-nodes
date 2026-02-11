@@ -166,6 +166,11 @@ export function addNode<T = string>(
       return;
     }
   }
+  
+  if (!root || !parent) {
+    // Must be a root
+    root = id;
+  }
 
   if (child) {
     if (mappings[child]) {
