@@ -178,25 +178,26 @@ describe("setChild", () => {
   });
 
   test("sets parent.child when relationship is valid (child.parent === parent)", () => {
-    setChild(mappings, "a", "b");
+    mappings = setChild(mappings, "a", "b");
     expect(mappings["a"]!.child).toBe("b");
   });
 
   test("does not set parent.child if child is not a child of that parent", () => {
     // b.parent is "a", so trying to set root.child to b should be ignored
     const before = mappings["root"]!.child;
-    setChild(mappings, "root", "b");
+    mappings = setChild(mappings, "root", "b");
     expect(mappings["root"]!.child).toBe(before);
   });
 
   test("clears parent.child when child is undefined", () => {
     expect(mappings["a"]!.child).toBe("b");
-    setChild(mappings, "a", undefined);
+    mappings = setChild(mappings, "a", undefined);
     expect(mappings["a"]!.child).toBeUndefined();
   });
 
   test("does nothing if parent does not exist", () => {
-    setChild(mappings, "ghost", "a"); // should not throw
+    mappings = setChild(mappings, "ghost", "a"); // should not throw
+    expect(mappings).toBeDefined();
   });
 });
 
@@ -211,7 +212,7 @@ describe("nextChild", () => {
     mappings["x"] = createMessage("x", "root");
     mappings["root"]!.child = "a"; // current = a
 
-    nextChild(mappings, "root");
+    mappings = nextChild(mappings, "root");
 
     expect(mappings["root"]!.child).toBe("x");
     expect(mappings["x"]!.parent).toBe("root");
@@ -221,7 +222,7 @@ describe("nextChild", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     mappings["root"]!.child = "not-a-real-child-id";
 
-    nextChild(mappings, "root");
+    mappings = nextChild(mappings, "root");
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -232,7 +233,7 @@ describe("nextChild", () => {
     mappings["x"] = createMessage("x", "root");
     mappings["root"]!.child = "x"; // last sibling; children order [a, x]
 
-    nextChild(mappings, "root");
+    mappings = nextChild(mappings, "root");
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -240,7 +241,7 @@ describe("nextChild", () => {
 
   test("warns if parent id missing", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    nextChild(mappings, "ghost");
+    mappings = nextChild(mappings, "ghost");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
@@ -257,7 +258,7 @@ describe("lastChild", () => {
     mappings["x"] = createMessage("x", "root");
     mappings["root"]!.child = "x"; // current = x (2nd)
 
-    lastChild(mappings, "root");
+    mappings = lastChild(mappings, "root");
 
     expect(mappings["root"]!.child).toBe("a");
   });
@@ -266,7 +267,7 @@ describe("lastChild", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     mappings["root"]!.child = "not-a-real-child-id";
 
-    lastChild(mappings, "root");
+    mappings = lastChild(mappings, "root");
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -277,7 +278,7 @@ describe("lastChild", () => {
     mappings["x"] = createMessage("x", "root");
     mappings["root"]!.child = "a"; // first sibling
 
-    lastChild(mappings, "root");
+    mappings = lastChild(mappings, "root");
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -285,7 +286,7 @@ describe("lastChild", () => {
 
   test("warns if parent id missing", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    lastChild(mappings, "ghost");
+    mappings = lastChild(mappings, "ghost");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
@@ -303,17 +304,18 @@ describe("unlinkNode", () => {
     expect(mappings["a"]!.child).toBe("b");
     expect(mappings["c"]!.parent).toBe("b");
 
-    unlinkNode(mappings, "b");
+    mappings = unlinkNode(mappings, "b");
 
-    expect(mappings["a"]!.child).toBeUndefined();      // parent no longer points to b
-    expect(mappings["c"]!.parent).toBeUndefined();     // child no longer points to b
+    expect(mappings["a"]!.child).toBeUndefined(); // parent no longer points to b
+    expect(mappings["c"]!.parent).toBeUndefined(); // child no longer points to b
     expect(mappings["b"]!.parent).toBeUndefined();
     expect(mappings["b"]!.child).toBeUndefined();
     expect(mappings["b"]!.root).toBe("b");
   });
 
   test("does nothing for missing node", () => {
-    unlinkNode(mappings, "ghost"); // should not throw
+    mappings = unlinkNode(mappings, "ghost"); // should not throw
+    expect(mappings).toBeDefined();
   });
 });
 
@@ -325,7 +327,7 @@ describe("deleteNode", () => {
   });
 
   test("removes node and all descendants", () => {
-    deleteNode(mappings, "a");
+    mappings = deleteNode(mappings, "a");
 
     expect(mappings["a"]).toBeUndefined();
     expect(mappings["b"]).toBeUndefined();
@@ -337,7 +339,7 @@ describe("deleteNode", () => {
     mappings["a2"] = createMessage("a2", "root");
     mappings["a2-child"] = createMessage("a2-child", "a2");
 
-    deleteNode(mappings, "a2");
+    mappings = deleteNode(mappings, "a2");
 
     expect(mappings["a2"]).toBeUndefined();
     expect(mappings["a2-child"]).toBeUndefined();
@@ -349,7 +351,7 @@ describe("deleteNode", () => {
 
   test("warns for missing node", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    deleteNode(mappings, "ghost");
+    mappings = deleteNode(mappings, "ghost");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
@@ -360,7 +362,7 @@ describe("deleteNode", () => {
     // root is child of c, while c is descendant of root in the chain
     mappings["root"]!.parent = "c";
 
-    deleteNode(mappings, "root");
+    mappings = deleteNode(mappings, "root");
 
     expect(warnSpy).toHaveBeenCalled();
     // Should still delete everything reachable without hanging
@@ -383,7 +385,7 @@ describe("makeRoot", () => {
     expect(mappings["b"]!.child).toBe("c");
     expect(mappings["c"]!.parent).toBe("b");
 
-    makeRoot(mappings, "b");
+    mappings = makeRoot(mappings, "b");
 
     // b is now a root
     expect(mappings["b"]!.parent).toBeUndefined();
@@ -412,7 +414,7 @@ describe("makeRoot", () => {
     mappings["b2"] = createMessage("b2", "b");
     mappings["b2"]!.root = "root";
 
-    makeRoot(mappings, "b");
+    mappings = makeRoot(mappings, "b");
 
     expect(mappings["b2"]!.root).toBe("b");
     expect(mappings["b2"]!.parent).toBe("b");
@@ -420,7 +422,7 @@ describe("makeRoot", () => {
 
   test("warns if node missing", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    makeRoot(mappings, "ghost");
+    mappings = makeRoot(mappings, "ghost");
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
@@ -437,7 +439,7 @@ describe("addNode", () => {
   });
 
   test("inserts new node and links parent", () => {
-    addNode(mappings, "new", "assistant", "hi", "root", "c", undefined);
+    mappings = addNode(mappings, "new", "assistant", "hi", "root", "c", undefined);
 
     expect(mappings["new"]).toBeDefined();
     expect(mappings["new"]!.parent).toBe("c");
@@ -445,12 +447,12 @@ describe("addNode", () => {
   });
 
   test("computes root from parent chain (ignores provided root)", () => {
-    addNode(mappings, "n1", "assistant", "x", "WRONG_ROOT", "c", undefined);
+    mappings = addNode(mappings, "n1", "assistant", "x", "WRONG_ROOT", "c", undefined);
     expect(mappings["n1"]!.root).toBe("root"); // derived from getRoot(c)
   });
 
   test("creates a root node when parent is undefined (root becomes id)", () => {
-    addNode(mappings, "r2", "user", "hello", "root", undefined, undefined, d1, d2);
+    mappings = addNode(mappings, "r2", "user", "hello", "root", undefined, undefined, d1, d2);
 
     expect(mappings["r2"]).toBeDefined();
     expect(mappings["r2"]!.root).toBe("r2");
@@ -459,13 +461,13 @@ describe("addNode", () => {
   });
 
   test("when parent exists, root is derived even if root param is undefined", () => {
-    addNode(mappings, "n2", "assistant", "x", undefined, "b", undefined);
+    mappings = addNode(mappings, "n2", "assistant", "x", undefined, "b", undefined);
     expect(mappings["n2"]!.root).toBe("root");
     expect(mappings["b"]!.child).toBe("n2");
   });
 
   test("links provided child back to new node (sets child's parent)", () => {
-    addNode(mappings, "x", "assistant", "mid", "root", "b", "c", d1, d2);
+    mappings = addNode(mappings, "x", "assistant", "mid", "root", "b", "c", d1, d2);
 
     expect(mappings["x"]!.parent).toBe("b");
     expect(mappings["x"]!.child).toBe("c");
@@ -475,14 +477,14 @@ describe("addNode", () => {
 
   test("warns and does nothing if ID already exists", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    addNode(mappings, "a", "assistant", "dup", "root", undefined, undefined);
+    mappings = addNode(mappings, "a", "assistant", "dup", "root", undefined, undefined);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 
   test("warns and does nothing if parent does not exist", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    addNode(mappings, "x", "user", "badparent", "root", "missing-parent", undefined);
+    mappings = addNode(mappings, "x", "user", "badparent", "root", "missing-parent", undefined);
     expect(warnSpy).toHaveBeenCalled();
     expect(mappings["x"]).toBeUndefined();
     warnSpy.mockRestore();
@@ -492,7 +494,7 @@ describe("addNode", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const before = mappings["b"]!.child;
 
-    addNode(mappings, "x", "user", "badchild", "root", "b", "missing-child");
+    mappings = addNode(mappings, "x", "user", "badchild", "root", "b", "missing-child");
 
     expect(warnSpy).toHaveBeenCalled();
     expect(mappings["x"]).toBeUndefined();
@@ -501,13 +503,13 @@ describe("addNode", () => {
   });
 
   test("persists createTime and updateTime parameters", () => {
-    addNode(mappings, "t", "assistant", "time", "root", "c", undefined, d1, d2);
+    mappings = addNode(mappings, "t", "assistant", "time", "root", "c", undefined, d1, d2);
     expect(mappings["t"]!.createTime).toBe(d1);
     expect(mappings["t"]!.updateTime).toBe(d2);
   });
 
   test("sets parent.child to new node even if parent already had a child (overwrites)", () => {
-    addNode(mappings, "newFirst", "user", "n", "root", "root", undefined);
+    mappings = addNode(mappings, "newFirst", "user", "n", "root", "root", undefined);
 
     expect(mappings["root"]!.child).toBe("newFirst");
     expect(mappings["newFirst"]!.parent).toBe("root");
