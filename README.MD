@@ -1,287 +1,226 @@
-# message-node
+# message-nodes
 
-A tiny, dependency-free utility library for representing conversations as a **node graph** stored in a plain object mapping.
+A tiny, framework-agnostic TypeScript utility for representing and manipulating **conversation message graphs** (threaded chats, branching regenerations, forks, etc.) using a simple `Record<string, MessageNode>` map.
 
-It’s designed for UIs that need:
-- a **linear “current conversation”** path (via `child` pointers), *and*
-- **branching alternatives** (multiple children share the same `parent`), like conversation regeneration trees.
+It’s designed for UIs where:
+- each message knows its `parent` (what it replies to),
+- a parent can have **many children** (branches),
+- the parent also keeps an **active child pointer** (`child`) to represent “currently selected” branch,
+- every node tracks a `root` thread id.
+
+All operations are **immutable**: functions return a *new* mappings object when something changes (and preserve referential equality when nothing changes), which plays nicely with React/Redux/Zustand/etc.
 
 ## Install
 
-```bash
-npm i message-node
-# or
-yarn add message-node
-# or
-pnpm add message-node
+```sh
+npm i message-nodes
 ```
 
-## Data model
+(or)
 
-Each message is a node:
+```sh
+yarn add message-nodes
+```
 
-- `id`: unique node id
-- `role`: e.g. `"user" | "assistant" | "system"` (you decide)
-- `content`: generic payload (`string` by default)
-- `root`: id of the root node of the thread (usually equals the root node’s `id`)
-- `parent`: id of the parent node (optional)
-- `child`: id of the **currently selected** child along the “active” linear path (optional)
-- `createTime`, `updateTime`: timestamps
+## Core data model
 
 ```ts
 export interface MessageNode<T = string> {
   id: string;
   role: string;
   content: T;
+
+  // Thread root id (usually the id of the first/root node in a thread)
   root: string | undefined;
+
+  // Parent pointer (reply-to)
   parent?: string | undefined;
-  child?: string | undefined; 
+
+  // "Active" child pointer for this parent (selected branch)
+  child?: string | undefined;
+
   createTime: Date;
   updateTime: Date;
 }
 ```
 
-### Mental model
+### A note on branching
 
-Think of `mappings` as your database:
+Branching is represented by:
+- **Many nodes** with `parent = <some id>` (these are the children).
+- The parent’s `child` field points to the *currently active* child in the UI.
 
-```ts
-type Mappings<T = string> = Record<string, MessageNode<T>>;
-```
-
-- **Branching** is represented by multiple nodes having `parent = someId`
-- The **active path** is represented by each node’s `child` pointer:
-  - `root.child -> ... -> ...` gives the “current conversation” sequence
+This lets you keep all alternates while selecting one to display as the “main path”.
 
 ## Quick start
-
-Create a root message and append a few nodes:
 
 ```ts
 import {
   addNode,
   getConversation,
-} from "message-node";
+  getChildren,
+  nextChild,
+  lastChild,
+  setChild,
+} from "message-nodes";
 
-const mappings = {};
+let mappings: Record<string, any> = {};
 
-// Create a root node (no parent)
-addNode(
-  mappings,
-  "root",
-  "system",
-  "You are ChatGPT.",
-  undefined,
-  undefined,
-  undefined
-);
+// Create a root
+mappings = addNode(mappings, "root", "system", "You are a helpful assistant", undefined, undefined, undefined);
 
 // Add a user message under root
-addNode(
-  mappings,
-  "u1",
-  "user",
-  "Hello!",
-  "root",      // optional: will be corrected/validated
-  "root",      // parent
-  undefined
-);
+mappings = addNode(mappings, "u1", "user", "Hello!", undefined, "root", undefined);
 
-// Add assistant response under u1
-addNode(
+// Add two assistant replies branching off u1
+mappings = addNode(mappings, "a1", "assistant", "Hi there!", undefined, "u1", undefined);
+mappings = addNode(mappings, "a2", "assistant", "Hey! How can I help?", undefined, "u1", undefined);
+
+// u1.child points to the latest added child (because addNode sets parent.child = new node id)
+console.log(mappings["u1"].child); // "a2"
+
+// Get the active conversation chain from root
+const convo = getConversation(mappings, "root");
+console.log(convo.map(n => `${n.role}: ${n.content}`));
+
+// Switch active child for u1
+mappings = lastChild(mappings, "u1"); // moves selection to previous branch (a1)
+```
+
+## API
+
+### Lookup
+
+#### `hasNode(mappings, id): boolean`
+Returns `true` if `id` exists in the map.
+
+#### `getNode(mappings, id): MessageNode | undefined`
+Returns the node at `id` or `undefined`.
+
+#### `getRoot(mappings, id): MessageNode | undefined`
+Walks parent pointers until the top-most node and returns it.
+
+### Traversal
+
+#### `getConversation(mappings, rootId): MessageNode[]`
+Returns the **active chain** starting at `rootId` by following:
+1) the root node,
+2) its `child`,
+3) then each node’s `child`, etc.
+
+It stops on missing nodes or cycles (and warns).
+
+> Note: this returns the *selected branch path* only (not all branches).
+
+#### `getAncestry(mappings, id): MessageNode[]`
+Returns `[id, parent, grandparent, ...]` walking upward.
+Stops on missing nodes or cycles (and warns).
+
+#### `getChildren(mappings, parentId): MessageNode[]`
+Returns all direct children (all nodes where `node.parent === parentId`).
+
+### Branch selection (active child pointer)
+
+#### `setChild(mappings, parentId, childId | undefined): Record<string, MessageNode>`
+Sets the parent’s active `child` pointer.
+
+Safety checks:
+- parent must exist
+- if `childId` is provided, it must exist **and** have `parent === parentId`
+
+If nothing changes, returns the original `mappings` object.
+
+#### `nextChild(mappings, parentId)`
+Moves the active child to the next sibling among `getChildren(...)` order.
+Warns if it can’t.
+
+#### `lastChild(mappings, parentId)`
+Moves the active child to the previous sibling among `getChildren(...)` order.
+Warns if it can’t.
+
+> Ordering note: `getChildren` uses `Object.values(mappings)` filtering, so sibling order depends on insertion/iteration order of the object. If you need stable ordering, consider storing an `index`/`createTime` and sorting in your UI before deciding which child is “next”.
+
+### Mutation
+
+All mutation-style helpers are immutable: they return a new map and keep the old one untouched.
+
+#### `addNode(mappings, id, role, content, root, parent, child, createTime?, updateTime?)`
+Adds a node and optionally links it into the graph.
+
+Behavior:
+- If `parent` is provided: `root` becomes `getRoot(parent)?.id ?? parent`
+- If `parent` is not provided: the new node becomes its own root (`root = id`)
+- Validates that provided `parent`, `child`, and `root` exist (when applicable)
+- Links:
+  - if `parent` exists, sets `parent.child = id` (selects the new node as active child)
+  - if `child` exists, sets `child.parent = id`
+
+#### `deleteNode(mappings, id)`
+Deletes `id` **and all descendants** (all nodes that have `parent` pointers leading back to `id`), using `getChildren` recursion.
+
+Also attempts to clean up pointers:
+- If the node had a `parent` whose `child` pointed at `id`, that parent’s `child` becomes `undefined`
+- If the node had an active `child` whose `parent === id`, that child’s `parent` becomes `undefined`
+- Detects cycles during deletion and warns
+
+#### `unlinkNode(mappings, id)`
+Isolates a node:
+- Detaches from its parent (clears parent’s active child if it was pointing here)
+- Detaches from its active child (clears that child’s parent if it pointed back)
+- Sets `node.parent = undefined`, `node.child = undefined`, `node.root = id`
+
+#### `makeRoot(mappings, id)`
+Turns a node into a new thread root:
+- Detaches `id` from its parent (but keeps its subtree)
+- Rewrites `root` on `id` and **all descendants** (follows both the explicit `child` chain and all `getChildren` branches)
+- Detects cycles and avoids infinite loops
+
+## Design notes / invariants
+
+- `parent` is the structural relationship (a node can have many children).
+- `child` is the *active selection* pointer on a parent (at most one selected child at a time).
+- `setChild` enforces that `child.parent === parent` to keep the relationship consistent.
+- Functions preserve referential equality when nothing changes (useful for React memoization).
+
+## TypeScript + non-string content
+
+`MessageNode<T>` is generic, so you can store richer content than strings:
+
+```ts
+type RichContent = { text: string; tokens?: number; model?: string };
+
+let mappings: Record<string, MessageNode<RichContent>> = {};
+
+mappings = addNode(
   mappings,
-  "a1",
+  "m1",
   "assistant",
-  "Hey! How can I help?",
-  "root",
-  "u1",
+  { text: "Hello!", model: "local-llm" },
+  undefined,
+  undefined,
   undefined
 );
-
-// Follow the active path starting from the root id:
-const thread = getConversation(mappings, "root");
-console.log(thread.map(m => `${m.role}: ${m.content}`));
 ```
 
-## Core operations
+## Common patterns
 
-### `hasNode(mappings, id)`
-Returns whether a node exists.
+### Show a thread in a UI (active branch)
 
 ```ts
-import { hasNode } from "message-node";
-
-if (!hasNode(mappings, "a1")) {
-  // ...
-}
+const thread = getConversation(mappings, rootId);
+// render thread
 ```
 
-### `getNode(mappings, id)`
-Returns a node or `undefined`.
+### Present alternate branches under a message
 
 ```ts
-import { getNode } from "message-node";
-
-const node = getNode(mappings, "u1");
+const options = getChildren(mappings, messageId);
+// render options, highlight mappings[messageId].child
 ```
 
-### `getRoot(mappings, id)`
-Walks `parent` pointers up until it finds the top node.
+### Switch branches
 
 ```ts
-import { getRoot } from "message-node";
-
-const root = getRoot(mappings, "a1"); // -> node "root"
-```
-
-## Traversal helpers
-
-### `getConversation(mappings, rootId)`
-Returns the **active linear path** of a thread by following `root.child -> child.child -> ...`.
-
-- Warns and stops if it detects a cycle.
-- If `rootId` doesn’t exist, returns `[]`.
-
-```ts
-import { getConversation } from "message-node";
-
-const active = getConversation(mappings, "root");
-```
-
-### `getAncestry(mappings, id)`
-Returns `[start, parent, parent-of-parent, ...]` until it hits the top.
-
-- Warns and stops on cycles.
-
-```ts
-import { getAncestry } from "message-node";
-
-const chain = getAncestry(mappings, "a1"); // ["a1", "u1", "root"]
-```
-
-### `getChildren(mappings, id)`
-Returns all direct children (branch candidates) of the node id.
-
-```ts
-import { getChildren } from "message-node";
-
-const options = getChildren(mappings, "u1"); // e.g. multiple assistant regenerations
-```
-
-## Branching + selecting the active child
-
-A node can have multiple children (branching), but only one is “active” via `parent.child`.
-
-### `setChild(mappings, parentId, childId | undefined)`
-Sets the active child pointer on the parent.
-
-- If `childId` is `undefined`, clears the selection.
-- Only allows setting if `childId` exists and `mappings[childId].parent === parentId`.
-
-```ts
-import { setChild } from "message-node";
-
-setChild(mappings, "u1", "a1");      // select a1
-setChild(mappings, "u1", undefined); // clear selection
-```
-
-### `nextChild(mappings, parentId)` / `lastChild(mappings, parentId)`
-Cycles the active child selection through the list returned by `getChildren`.
-
-Notes:
-- Children ordering comes from `Object.values(mappings)` filtering, so if you care about ordering, consider sorting children yourself (e.g. by `createTime`) before choosing which child to set.
-
-```ts
-import { nextChild, lastChild } from "message-node";
-
-nextChild(mappings, "u1"); // move active selection forward
-lastChild(mappings, "u1"); // move active selection backward
-```
-
-## Editing and deletion
-
-### `unlinkNode(mappings, id)`
-Detaches a node from its parent/child pointers:
-
-- If it was the selected `child` of its parent, clears that pointer.
-- If it had a `child` selected, clears that child’s `parent` pointer (if it matched).
-- Sets `node.parent = undefined`, `node.child = undefined`, and `node.root = id`.
-
-This isolates the node (it becomes its own root id).
-
-```ts
-import { unlinkNode } from "message-node";
-
-unlinkNode(mappings, "u1");
-```
-
-### `deleteNode(mappings, id)`
-Deletes a node and **all of its descendants** (based on `getChildren` recursion).
-
-- First unlinks the node (so parent/child pointers are cleaned up)
-- Detects cycles to avoid infinite recursion
-
-```ts
-import { deleteNode } from "message-node";
-
-deleteNode(mappings, "u1"); // removes u1 and all its branch descendants
-```
-
-## Making a node a new root
-
-### `makeRoot(mappings, id)`
-Turns a node into a root of its own thread:
-
-- Detaches it from its parent (but keeps its subtree)
-- Rewrites `.root` on the node **and all descendants**
-  - Traverses both the explicit `child` chain and all branching children.
-
-```ts
-import { makeRoot } from "message-node";
-
-makeRoot(mappings, "u1"); // u1 becomes a new root; its subtree root ids are rewritten
-```
-
-## Recommended usage patterns
-
-### 1) Keep `mappings` as your single source of truth
-Your UI can derive:
-- active linear message: `getConversation(mappings, rootId)`
-- current branch options: `getChildren(mappings, parentId)`
-- breadcrumb / context: `getAncestry(mappings, currentId)`
-
-### 2) Be explicit about ordering if you care
-`getChildren` returns in object enumeration order. If you need deterministic behavior:
-- sort by `createTime`, or
-- maintain your own ordered child list externally, or
-- choose active child explicitly with `setChild`.
-
-### 3) Treat warnings as signals, not errors
-Most functions are intentionally “safe”:
-- they `console.warn` on invalid inputs or cycles
-- they avoid throwing and keep your app running
-
-## API reference
-
-```ts
-// Existence / lookup
-hasNode(mappings, id): boolean
-getNode(mappings, id): MessageNode | undefined
-getRoot(mappings, id): MessageNode | undefined
-
-// Traversal
-getConversation(mappings, rootId): MessageNode[]
-getAncestry(mappings, id): MessageNode[]
-getChildren(mappings, id): MessageNode[]
-
-// Branch selection
-setChild(mappings, parentId, childId | undefined): void
-nextChild(mappings, parentId): void
-lastChild(mappings, parentId): void
-
-// Mutation
-addNode(mappings, id, role, content, root, parent, child, createTime?, updateTime?): void
-unlinkNode(mappings, id): void
-deleteNode(mappings, id): void
-makeRoot(mappings, id): void
+mappings = setChild(mappings, messageId, chosenChildId);
+// or mappings = nextChild(mappings, messageId);
 ```
