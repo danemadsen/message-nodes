@@ -13,8 +13,19 @@
     "lint": "eslint src --ext .ts",
     "test": "jest --passWithNoTests"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "chat",
+    "message",
+    "nodes",
+    "graph",
+    "relationships",
+    "open ai",
+    "ollama",
+    "llama.rn",
+    "gpt",
+    "llm"
+  ],
+  "author": "Dane Madsen",
   "license": "MIT",
   "description": "A library for managing message nodes and their relationships.",
   "devDependencies": {
