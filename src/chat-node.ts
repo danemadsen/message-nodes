@@ -1,5 +1,5 @@
 export interface ChatMessage<T = string> {
-  id?: string;
+  id: string;
   role: string;
   content: T;
   root: string | undefined;
@@ -99,4 +99,27 @@ export function lastChild<T = string>(
 
   mappings[parent]!.child = children[childIndex - 1]!.id;
   children[childIndex - 1]!.parent = parent;
+}
+
+/**
+ * Deletes a message and all of its child messages from the mappings.
+ * @param mappings A record mapping message IDs to ChatMessage objects.
+ * @param id The ID of the parent message.
+ */
+export function deleteMessage<T = string>(
+  mappings: Record<string, ChatMessage<T>>, 
+  id: string
+): void {
+  if (!mappings[id]) {
+    console.warn(`Message with ID: ${id} does not exist.`);
+    return;
+  }
+
+  const children = getChildren<T>(mappings, id);
+
+  for (const child of children) {
+    deleteMessage<T>(mappings, child.id);
+  }
+
+  delete mappings[id];
 }
