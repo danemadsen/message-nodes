@@ -16,7 +16,7 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "description": "A collection of chat-related nodes for various applications.",
+  "description": "A library for managing chat nodes and their relationships.",
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@eslint/json": "^0.14.0",
