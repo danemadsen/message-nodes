@@ -62,25 +62,33 @@ export function getRoot<T = string>(
  * @returns An array of ChatMessage objects representing the conversation thread.
  */
 export function getConversation<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, ChatMessage<T>>,
   root: string
 ): Array<ChatMessage<T>> {
-  const conversation: Array<ChatMessage<T>> = [];
-    
-  if (mappings[root] && mappings[root].child) {
-    let current: ChatMessage<T> | undefined = mappings[mappings[root].child];
-    while (current) {
-      conversation.push(current);
-      if (current.child) {
-        current = mappings[current.child];
-      } else {
-        break;
-      }
-    }
-  } else {
-    console.warn(`Root message with ID: ${root} does not exist or has no child.`);
+  const rootNode = getNode(mappings, root);
+  if (!rootNode) {
+    console.warn(`Root message with ID: ${root} does not exist.`);
+    return [];
   }
-  
+
+  if (!rootNode.child) return [];
+
+  const conversation: Array<ChatMessage<T>> = [];
+  const seen = new Set<string>();
+
+  let current = getNode(mappings, rootNode.child);
+
+  while (current) {
+    if (seen.has(current.id)) {
+      console.warn(`Cycle detected in conversation at ID: ${current.id}`);
+      break;
+    }
+    seen.add(current.id);
+
+    conversation.push(current);
+    current = current.child ? getNode(mappings, current.child) : undefined;
+  }
+
   return conversation;
 }
 
@@ -91,26 +99,31 @@ export function getConversation<T = string>(
  * @returns An array of ChatMessage objects representing the ancestors of the specified message ID.
  */
 export function getAncestry<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, ChatMessage<T>>,
   id: string
 ): Array<ChatMessage<T>> {
-  const ancestors: Array<ChatMessage<T>> = [];
-  
-  if (mappings[id] && mappings[id].parent) {
-    let current = mappings[id];
-    while (current.parent && mappings[current.parent]) {
-      ancestors.push(current);
-      if (current.parent) {
-        current = mappings[current.parent]!;
-      } else {
-        break;
-      }
-    }
-  } else {
-    console.warn(`Message with ID: ${id} does not exist or has no parent.`);
+  const start = getNode(mappings, id);
+  if (!start) {
+    console.warn(`Message with ID: ${id} does not exist.`);
+    return [];
   }
 
-  return ancestors;
+  const out: Array<ChatMessage<T>> = [];
+  const seen = new Set<string>();
+
+  let current: ChatMessage<T> | undefined = start;
+  while (current) {
+    if (seen.has(current.id)) {
+      console.warn(`Cycle detected in ancestry at ID: ${current.id}`);
+      break;
+    }
+    seen.add(current.id);
+
+    out.push(current);
+    current = current.parent ? getNode(mappings, current.parent) : undefined;
+  }
+
+  return out;
 }
 
 /**
@@ -132,24 +145,28 @@ export function getChildren<T = string>(
  * @param parent The ID of the parent message.
  */
 export function nextChild<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, ChatMessage<T>>,
   parent: string
 ): void {
-  const children = getChildren(mappings, parent);
-  const childIndex = children.findIndex((child) => child.id === mappings[parent]?.child);
-
-  if (childIndex === -1) {
-    console.warn(`No child found for parent ID: ${parent}`);
+  const parentNode = getNode(mappings, parent);
+  if (!parentNode) {
+    console.warn(`Parent node with ID: ${parent} does not exist.`);
     return;
   }
 
-  if (childIndex + 1 >= children.length) {
+  const children = getChildren(mappings, parent);
+  const idx = children.findIndex((c) => c.id === parentNode?.child);
+
+  if (idx === -1) {
+    console.warn(`No child found for parent ID: ${parent}`);
+    return;
+  }
+  if (idx + 1 >= children.length) {
     console.warn(`No next child available for parent ID: ${parent}`);
     return;
   }
 
-  mappings[parent]!.child = children[childIndex + 1]!.id;
-  children[childIndex + 1]!.parent = parent;
+  setChild(mappings, parent, children[idx + 1]!.id);
 }
 
 /**
@@ -158,24 +175,28 @@ export function nextChild<T = string>(
  * @param parent The ID of the parent message.
  */
 export function lastChild<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, ChatMessage<T>>,
   parent: string
 ): void {
-  const children = getChildren(mappings, parent);
-  const childIndex = children.findIndex((child) => child.id === mappings[parent]?.child);
-
-  if (childIndex === -1) {
-    console.warn(`No child found for parent ID: ${parent}`);
+  const parentNode = getNode(mappings, parent);
+  if (!parentNode) {
+    console.warn(`Parent node with ID: ${parent} does not exist.`);
     return;
   }
 
-  if (childIndex - 1 < 0) {
+  const children = getChildren(mappings, parent);
+  const idx = children.findIndex((c) => c.id === parentNode.child);
+
+  if (idx === -1) {
+    console.warn(`No child found for parent ID: ${parent}`);
+    return;
+  }
+  if (idx - 1 < 0) {
     console.warn(`No previous child available for parent ID: ${parent}`);
     return;
   }
 
-  mappings[parent]!.child = children[childIndex - 1]!.id;
-  children[childIndex - 1]!.parent = parent;
+  setChild(mappings, parent, children[idx - 1]!.id);
 }
 
 /**
@@ -201,19 +222,36 @@ export function setChild<T = string>(
  * @param mappings A record mapping node IDs to ChatMessage objects.
  * @param id The ID of the parent node.
  */
-export function deleteNode<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+export function deleteNode<T>(
+  mappings: Record<string, ChatMessage<T>>,
   id: string
 ): void {
-  if (!mappings[id]) {
+  const seen = new Set<string>();
+  _deleteNodeInternal(mappings, id, seen);
+}
+
+function _deleteNodeInternal<T>(
+  mappings: Record<string, ChatMessage<T>>,
+  id: string,
+  seen: Set<string>
+): void {
+  const node = getNode(mappings, id);
+  if (!node) {
     console.warn(`Node with ID: ${id} does not exist.`);
     return;
   }
 
-  const children = getChildren<T>(mappings, id);
+  if (seen.has(id)) {
+    console.warn(`Cycle detected while deleting at ID: ${id}`);
+    return;
+  }
+  seen.add(id);
 
+  unlinkNode(mappings, id);
+
+  const children = getChildren(mappings, id);
   for (const child of children) {
-    deleteNode<T>(mappings, child.id);
+    _deleteNodeInternal(mappings, child.id, seen);
   }
 
   delete mappings[id];
@@ -258,7 +296,7 @@ export function unlinkNode<T = string>(
  * @param updateTime The last update time of the node (defaults to current time).
  */
 export function addNode<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, ChatMessage<T>>,
   id: string,
   role: string,
   content: T,
@@ -268,41 +306,41 @@ export function addNode<T = string>(
   createTime: Date = new Date(),
   updateTime: Date = new Date()
 ): void {
-  if (mappings[id]) {
+  if (hasNode(mappings, id)) {
     console.warn(`Node with ID: ${id} already exists.`);
     return;
   }
 
-  if (root && !mappings[root]) {
+  // Validate parent/child existence up-front (prevents partial mutation).
+  const parentNode = parent ? getNode(mappings, parent) : undefined;
+  if (parent && !parentNode) {
+    console.warn(`Parent node with ID: ${parent} does not exist.`);
+    return;
+  }
+
+  const childNode = child ? getNode(mappings, child) : undefined;
+  if (child && !childNode) {
+    console.warn(`Child node with ID: ${child} does not exist.`);
+    return;
+  }
+
+  // Determine root:
+  // - If parent exists, root should be parent's root (or actual root by walking up).
+  // - If no parent, this node becomes a root regardless of provided root.
+  if (!parent) {
+    root = id;
+  } else {
+    root = getRoot(mappings, parent)?.id ?? parent; // fallback, should exist
+  }
+
+  // If the caller supplied a root, we can optionally sanity-check it:
+  // (If you don't care, you can drop this block.)
+  if (root && !hasNode(mappings, root) && root !== id) {
     console.warn(`Root node with ID: ${root} does not exist.`);
     return;
   }
 
-  if (parent) {
-    if (mappings[parent]) {
-      mappings[parent]!.child = id;
-    } 
-    else {
-      console.warn(`Parent node with ID: ${parent} does not exist.`);
-      return;
-    }
-  }
-  
-  if (!root || !parent) {
-    // Must be a root
-    root = id;
-  }
-
-  if (child) {
-    if (mappings[child]) {
-      mappings[child]!.parent = id;
-    } 
-    else {
-      console.warn(`Child node with ID: ${child} does not exist.`);
-      return;
-    }
-  }
-
+  // Create node first
   mappings[id] = {
     id,
     role,
@@ -311,8 +349,12 @@ export function addNode<T = string>(
     parent,
     child,
     createTime,
-    updateTime
+    updateTime,
   };
+
+  // Now apply linking
+  if (parent) setChild(mappings, parent, id);
+  if (child) childNode!.parent = id;
 }
 
 /**
@@ -321,33 +363,42 @@ export function addNode<T = string>(
  * @param id The ID of the node to convert to a root node.
  */
 export function makeRoot<T = string>(
-  mappings: Record<string, ChatMessage<T>>, 
+  mappings: Record<string, ChatMessage<T>>,
   id: string
 ): void {
-  if (!mappings[id]) {
+  const node = getNode(mappings, id);
+  if (!node) {
     console.warn(`Node with ID: ${id} does not exist.`);
     return;
   }
 
-  const node = mappings[id]!;
-  
-  // Remove parent-child relationships
+  // Detach from parent (but keep child/subtree!)
   if (node.parent) {
-    const parentNode = mappings[node.parent];
-    if (parentNode) {
-      parentNode.child = undefined;
-    }
+    const parent = getNode(mappings, node.parent);
+    if (parent?.child === id) parent.child = undefined;
     node.parent = undefined;
   }
 
-  if (node.child) {
-    const childNode = mappings[node.child];
-    if (childNode) {
-      childNode.parent = undefined;
-    }
-    node.child = undefined;
-  }
+  const newRootId = id;
 
-  // Set root to its own ID
-  node.root = id;
+  // Rewrite root on this node + descendants (branch-aware)
+  const seen = new Set<string>();
+  const stack = [newRootId];
+
+  while (stack.length) {
+    const curId = stack.pop()!;
+    if (seen.has(curId)) continue;
+    seen.add(curId);
+
+    const cur = getNode(mappings, curId);
+    if (!cur) continue;
+
+    cur.root = newRootId;
+
+    // Follow explicit chain
+    if (cur.child) stack.push(cur.child);
+
+    // Follow all direct children (branching)
+    for (const ch of getChildren(mappings, curId)) stack.push(ch.id);
+  }
 }
