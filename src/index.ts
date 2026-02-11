@@ -247,11 +247,22 @@ function _deleteNodeInternal<T>(
   }
   seen.add(id);
 
-  unlinkNode(mappings, id);
+  const childIds = getChildren(mappings, id).map((c) => c.id);
 
-  const children = getChildren(mappings, id);
-  for (const child of children) {
-    _deleteNodeInternal(mappings, child.id, seen);
+  for (const childId of childIds) {
+    _deleteNodeInternal(mappings, childId, seen);
+  }
+
+  const parentId = node.parent;
+  if (parentId) {
+    const parent = getNode(mappings, parentId);
+    if (parent?.child === id) parent.child = undefined;
+  }
+
+  const activeChildId = node.child;
+  if (activeChildId) {
+    const activeChild = getNode(mappings, activeChildId);
+    if (activeChild?.parent === id) activeChild.parent = undefined;
   }
 
   delete mappings[id];
