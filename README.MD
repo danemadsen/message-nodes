@@ -5,7 +5,6 @@ A tiny, dependency-free utility library for representing conversations as a **no
 It’s designed for UIs that need:
 - a **linear “current conversation”** path (via `child` pointers), *and*
 - **branching alternatives** (multiple children share the same `parent`), like conversation regeneration trees.
-> **Important note for this README:** Code blocks inside this README use ````` instead of ``` so you can paste this into places where triple-backticks would conflict.
 
 ---
 
