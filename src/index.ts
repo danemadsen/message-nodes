@@ -5,7 +5,7 @@ export interface MessageNode<T = string> {
   id: string;
   role: string;
   content: T;
-  root: string | undefined;
+  root: string;
   parent?: string | undefined;
   child?: string | undefined; 
   createTime: Date;
@@ -70,6 +70,18 @@ export function getRoot<T = string>(
   }
 
   return current;
+}
+
+/**
+ * Retrieves all root nodes in the mappings.
+ * Root nodes are any nodes where node.root === node.id.
+ * @param mappings A record mapping node IDs to MessageNode objects.
+ * @returns An array of MessageNode objects that are roots.
+ */
+export function getRoots<T = string>(
+  mappings: Record<string, MessageNode<T>>
+): Array<MessageNode<T>> {
+  return Object.values(mappings).filter((node) => node.root === node.id);
 }
 
 /**

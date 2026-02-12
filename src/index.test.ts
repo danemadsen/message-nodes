@@ -6,6 +6,7 @@ import {
   getConversation,
   getNode,
   getRoot,
+  getRoots,
   hasNode,
   lastChild,
   makeRoot,
@@ -64,6 +65,31 @@ describe("getRoot", () => {
   test("returns undefined for unknown id", () => {
     const mappings = makeLinearMappings();
     expect(getRoot(mappings, "ghost")).toBeUndefined();
+  });
+});
+
+describe("getRoots", () => {
+  test("returns empty array for empty mappings", () => {
+    expect(getRoots({})).toEqual([]);
+  });
+
+  test("returns the single root in a linear mapping", () => {
+    const mappings = makeLinearMappings();
+    expect(getRoots(mappings).map((n) => n.id)).toEqual(["root"]);
+  });
+
+  test("returns multiple roots when multiple root nodes exist", () => {
+    let mappings = makeLinearMappings();
+    mappings = addNode(mappings, "r2", "user", "hello", "ignored", undefined, undefined);
+
+    expect(getRoots(mappings).map((n) => n.id).sort()).toEqual(["r2", "root"]);
+  });
+
+  test("includes nodes that became roots via unlinkNode", () => {
+    let mappings = makeLinearMappings();
+    mappings = unlinkNode(mappings, "b");
+
+    expect(getRoots(mappings).map((n) => n.id).sort()).toEqual(["b", "root"]);
   });
 });
 
