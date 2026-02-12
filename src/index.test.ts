@@ -1,5 +1,6 @@
 import {
   addNode,
+  branchNode,
   deleteNode,
   getAncestry,
   getChildren,
@@ -14,6 +15,7 @@ import {
   nextChild,
   setChild,
   unlinkNode,
+  updateContent,
 } from "./index";
 
 function createMessage(id: string, parent?: string, child?: string): MessageNode {
@@ -539,5 +541,197 @@ describe("addNode", () => {
 
     expect(mappings["root"]!.child).toBe("newFirst");
     expect(mappings["newFirst"]!.parent).toBe("root");
+  });
+});
+
+describe("branchNode", () => {
+  let mappings: Record<string, MessageNode>;
+
+  const d1 = new Date("2020-01-01T00:00:00.000Z");
+  const d2 = new Date("2020-01-02T00:00:00.000Z");
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+  });
+
+  test("creates a sibling under the same parent and makes it the active child", () => {
+    // b's parent is a
+    expect(mappings["b"]!.parent).toBe("a");
+    expect(mappings["a"]!.child).toBe("b");
+
+    mappings = branchNode(mappings, "b", "b2", "hello", d1, d2);
+
+    expect(mappings["b2"]).toBeDefined();
+    expect(mappings["b2"]!.parent).toBe("a");
+    expect(mappings["b2"]!.root).toBe("root");
+    expect(mappings["b2"]!.role).toBe(mappings["b"]!.role);
+    expect(mappings["b2"]!.content).toBe("hello");
+    expect(mappings["b2"]!.createTime).toBe(d1);
+    expect(mappings["b2"]!.updateTime).toBe(d2);
+
+    // parent now points to sibling as active branch
+    expect(mappings["a"]!.child).toBe("b2");
+
+    // original node remains intact
+    expect(mappings["b"]!.parent).toBe("a");
+    expect(mappings["b"]!.child).toBe("c");
+  });
+
+  test("warns and returns original mappings if source node is missing", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const before = mappings;
+
+    const next = branchNode(mappings, "ghost", "x", "nope", d1, d2);
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(next).toBe(before);
+    warnSpy.mockRestore();
+  });
+
+  test("warns and returns original mappings if sibling id already exists", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const before = mappings;
+
+    const next = branchNode(mappings, "b", "c", "dup", d1, d2); // "c" already exists
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(next).toBe(before);
+    warnSpy.mockRestore();
+  });
+
+  test("warns and returns original mappings if parent pointer exists but parent node missing", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const before = mappings;
+
+    // corrupt mapping: b claims parent "missing", but node not present
+    mappings["b"]!.parent = "missing";
+
+    const next = branchNode(mappings, "b", "b2", "x", d1, d2);
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(next).toBe(before);
+    warnSpy.mockRestore();
+  });
+
+  test("branches a root node by creating a new root sibling (parent undefined => new root)", () => {
+    expect(mappings["root"]!.parent).toBeUndefined();
+
+    mappings = branchNode(mappings, "root", "r2", "hi", d1, d2);
+
+    expect(mappings["r2"]).toBeDefined();
+    expect(mappings["r2"]!.parent).toBeUndefined();
+    expect(mappings["r2"]!.child).toBeUndefined();
+    expect(mappings["r2"]!.root).toBe("r2"); // addNode makes it a root when parent undefined
+    expect(mappings["r2"]!.role).toBe(mappings["root"]!.role);
+    expect(mappings["r2"]!.content).toBe("hi");
+  });
+
+  test("preserves referential equality for no-op failure cases", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const before = mappings;
+
+    const next1 = branchNode(mappings, "ghost", "x", "nope");
+    const next2 = branchNode(mappings, "b", "c", "dup");
+
+    expect(next1).toBe(before);
+    expect(next2).toBe(before);
+
+    warnSpy.mockRestore();
+  });
+});
+
+describe("updateContent", () => {
+  let mappings: Record<string, MessageNode>;
+
+  const d1 = new Date("2020-01-01T00:00:00.000Z");
+  const d2 = new Date("2020-01-02T00:00:00.000Z");
+
+  beforeEach(() => {
+    mappings = makeLinearMappings();
+    // make times deterministic
+    mappings["b"]!.updateTime = d1;
+  });
+
+  test("replaces content and updates updateTime", () => {
+    const next = updateContent(mappings, "b", "NEW", d2);
+
+    expect(next).not.toBe(mappings);
+    expect(next["b"]!.content).toBe("NEW");
+    expect(next["b"]!.updateTime).toBe(d2);
+
+    // other nodes untouched
+    expect(next["a"]).toBe(mappings["a"]);
+  });
+
+  test("supports functional updater for strings", () => {
+    const next = updateContent(mappings, "b", (prev) => prev + "++", d2);
+    expect(next["b"]!.content).toBe("b++");
+    expect(next["b"]!.updateTime).toBe(d2);
+  });
+
+  test("supports functional updater for non-string types", () => {
+    type Obj = { n: number; xs: number[] };
+
+    const objMappings: Record<string, MessageNode<Obj>> = {
+      root: {
+        id: "root",
+        role: "user",
+        content: { n: 0, xs: [] },
+        root: "root",
+        parent: undefined,
+        child: "a",
+        createTime: d1,
+        updateTime: d1,
+      },
+      a: {
+        id: "a",
+        role: "user",
+        content: { n: 1, xs: [1] },
+        root: "root",
+        parent: "root",
+        child: undefined,
+        createTime: d1,
+        updateTime: d1,
+      },
+    };
+
+    const next = updateContent(objMappings, "a", (prev) => ({ n: prev.n + 1, xs: [...prev.xs, 2] }), d2);
+
+    expect(next["a"]!.content).toEqual({ n: 2, xs: [1, 2] });
+    expect(next["a"]!.updateTime).toBe(d2);
+  });
+
+  test("warns and returns original mappings if node missing", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const before = mappings;
+
+    const next = updateContent(mappings, "ghost", "x", d2);
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(next).toBe(before);
+
+    warnSpy.mockRestore();
+  });
+
+  test("returns original mappings when content and updateTime are unchanged (no-op)", () => {
+    const before = mappings;
+    const next = updateContent(mappings, "b", "b", d1); // same content, same updateTime
+    expect(next).toBe(before);
+  });
+
+  test("returns new mappings when content is same but updateTime differs", () => {
+    const before = mappings;
+    const next = updateContent(mappings, "b", "b", d2); // same content, different updateTime
+    expect(next).not.toBe(before);
+    expect(next["b"]!.content).toBe("b");
+    expect(next["b"]!.updateTime).toBe(d2);
+  });
+
+  test("returns new mappings when updateTime same but content differs", () => {
+    const before = mappings;
+    const next = updateContent(mappings, "b", "changed", d1);
+    expect(next).not.toBe(before);
+    expect(next["b"]!.content).toBe("changed");
+    expect(next["b"]!.updateTime).toBe(d1);
   });
 });

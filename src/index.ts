@@ -381,6 +381,14 @@ export function unlinkNode<T = string>(
 /**
  * Adds a new node to the mappings with optional parent-child relationships.
  * @param mappings A record mapping node IDs to MessageNode objects.
+ * @param id The ID of the new node to be added.
+ * @param role The role associated with the new node (e.g., "user", "assistant").
+ * @param content The content of the new node.
+ * @param root The ID of the root node for this new node (if not provided, it will be determined based on the parent).
+ * @param parent The ID of the parent node (if any).
+ * @param child The ID of the child node (if any).
+ * @param createTime The creation time of the new node (defaults to current time if not provided).
+ * @param updateTime The last update time of the new node (defaults to current time if not provided).
  * @returns A new mappings object (or the original if no change).
  */
 export function addNode<T = string>(
@@ -457,6 +465,96 @@ export function addNode<T = string>(
         draft[child]!.parent = id;
       }
     }
+  });
+}
+
+/**
+ * Creates a sibling node by adding a new node with the same parent as the specified node.
+ * @param mappings A record mapping node IDs to MessageNode objects.
+ * @param id The ID of the existing node to create a sibling for.
+ * @param sibling The ID of the new sibling node to be added.
+ * @param content The content of the new sibling node.
+ * @param createTime The creation time of the new node (defaults to current time if not provided).
+ * @param updateTime The last update time of the new node (defaults to current time if not provided).
+ * @returns A new mappings object (or the original if no change).
+ */
+export function branchNode<T = string>(
+  mappings: Readonly<Record<string, MessageNode<T>>>,
+  id: string,
+  sibling: string,
+  content: T,
+  createTime: Date = new Date(),
+  updateTime: Date = new Date()
+): Record<string, MessageNode<T>> {
+  const node0 = mappings[id];
+  if (!node0) {
+    console.warn(`Node with ID: ${id} does not exist.`);
+    return mappings as Record<string, MessageNode<T>>;
+  }
+
+  if (hasNode(mappings as any, sibling)) {
+    console.warn(`Node with ID: ${sibling} already exists.`);
+    return mappings as Record<string, MessageNode<T>>;
+  }
+
+  // Ensure parent exists if we're branching under a parent.
+  if (node0.parent && !mappings[node0.parent]) {
+    console.warn(`Parent node with ID: ${node0.parent} does not exist.`);
+    return mappings as Record<string, MessageNode<T>>;
+  }
+
+  // addNode will:
+  // - set root correctly from parent (or make sibling a root if no parent)
+  // - set parent.child = sibling (active branch)
+  return addNode<T>(
+    mappings,
+    sibling,
+    node0.role,
+    content,
+    node0.root,
+    node0.parent,
+    undefined,
+    createTime,
+    updateTime
+  );
+}
+
+/**
+ * Updates the content of a node with the specified ID.
+ * @param mappings A record mapping node IDs to MessageNode objects.
+ * @param id The ID of the node to update.
+ * @param content The new content for the node, or a function that takes the previous content and returns the new content.
+ * @param updateTime The last update time of the node (defaults to current time if not provided).
+ * @returns A new mappings object (or the original if no change).
+ */
+export function updateContent<T>(
+  mappings: Readonly<Record<string, MessageNode<T>>>,
+  id: string,
+  content: T | ((prev: T) => T),
+  updateTime: Date = new Date()
+): Record<string, MessageNode<T>> {
+  const node0 = mappings[id];
+  if (!node0) {
+    console.warn(`Node with ID: ${id} does not exist.`);
+    return mappings as Record<string, MessageNode<T>>;
+  }
+
+  const newContent =
+    typeof content === "function"
+      ? (content as (prev: T) => T)(node0.content)
+      : content;
+
+  // no-op guard
+  if (Object.is(node0.content, newContent) && node0.updateTime.getTime() === updateTime.getTime()) {
+    return mappings as Record<string, MessageNode<T>>;
+  }
+
+  return updateMap(mappings, (draft) => {
+    const node = draft[id];
+    if (!node) return;
+    draft[id] = cloneNode(node);
+    draft[id]!.content = newContent;
+    draft[id]!.updateTime = updateTime;
   });
 }
 
