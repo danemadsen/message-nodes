@@ -18,16 +18,22 @@ import {
   updateContent,
 } from "./index";
 
-function createMessage(id: string, parent?: string, child?: string): MessageNode {
+function createMessage(
+  id: string,
+  parent?: string,
+  child?: string,
+  root?: string,
+  metadata?: Record<string, any>
+): MessageNode {
+  const computedRoot = root ?? (parent ? "root" : id);
   return {
     id,
     role: "user",
     content: id,
-    root: "root",
+    root: computedRoot,
     parent,
     child,
-    createTime: new Date(),
-    updateTime: new Date(),
+    metadata,
   };
 }
 
@@ -108,7 +114,7 @@ describe("getConversation", () => {
   });
 
   test("returns empty if root has no child", () => {
-    mappings["loner"] = createMessage("loner");
+    mappings["loner"] = createMessage("loner"); // root=loner, no child
     expect(getConversation(mappings, "loner")).toEqual([]);
   });
 
@@ -211,7 +217,6 @@ describe("setChild", () => {
   });
 
   test("does not set parent.child if child is not a child of that parent", () => {
-    // b.parent is "a", so trying to set root.child to b should be ignored
     const before = mappings["root"]!.child;
     mappings = setChild(mappings, "root", "b");
     expect(mappings["root"]!.child).toBe(before);
@@ -224,7 +229,7 @@ describe("setChild", () => {
   });
 
   test("does nothing if parent does not exist", () => {
-    mappings = setChild(mappings, "ghost", "a"); // should not throw
+    mappings = setChild(mappings, "ghost", "a");
     expect(mappings).toBeDefined();
   });
 });
@@ -238,7 +243,7 @@ describe("nextChild", () => {
 
   test("switches active child pointer to next sibling", () => {
     mappings["x"] = createMessage("x", "root");
-    mappings["root"]!.child = "a"; // current = a
+    mappings["root"]!.child = "a";
 
     mappings = nextChild(mappings, "root");
 
@@ -259,7 +264,7 @@ describe("nextChild", () => {
   test("warns if no next child available (already at last sibling)", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     mappings["x"] = createMessage("x", "root");
-    mappings["root"]!.child = "x"; // last sibling; children order [a, x]
+    mappings["root"]!.child = "x"; // children order is implementation-dependent; this test just expects warning
 
     mappings = nextChild(mappings, "root");
 
@@ -284,7 +289,7 @@ describe("lastChild", () => {
 
   test("switches active child pointer to previous sibling", () => {
     mappings["x"] = createMessage("x", "root");
-    mappings["root"]!.child = "x"; // current = x (2nd)
+    mappings["root"]!.child = "x";
 
     mappings = lastChild(mappings, "root");
 
@@ -304,7 +309,7 @@ describe("lastChild", () => {
   test("warns if no previous child available (already at first sibling)", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     mappings["x"] = createMessage("x", "root");
-    mappings["root"]!.child = "a"; // first sibling
+    mappings["root"]!.child = "a";
 
     mappings = lastChild(mappings, "root");
 
@@ -328,21 +333,20 @@ describe("unlinkNode", () => {
   });
 
   test("detaches from parent and child, and becomes its own root", () => {
-    // before: a -> b -> c
     expect(mappings["a"]!.child).toBe("b");
     expect(mappings["c"]!.parent).toBe("b");
 
     mappings = unlinkNode(mappings, "b");
 
-    expect(mappings["a"]!.child).toBeUndefined(); // parent no longer points to b
-    expect(mappings["c"]!.parent).toBeUndefined(); // child no longer points to b
+    expect(mappings["a"]!.child).toBeUndefined();
+    expect(mappings["c"]!.parent).toBeUndefined();
     expect(mappings["b"]!.parent).toBeUndefined();
     expect(mappings["b"]!.child).toBeUndefined();
     expect(mappings["b"]!.root).toBe("b");
   });
 
   test("does nothing for missing node", () => {
-    mappings = unlinkNode(mappings, "ghost"); // should not throw
+    mappings = unlinkNode(mappings, "ghost");
     expect(mappings).toBeDefined();
   });
 });
@@ -386,14 +390,13 @@ describe("deleteNode", () => {
 
   test("detects a cycle via parent pointers and warns (does not infinite loop)", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    // Create a cycle in the 'parent' graph:
-    // root is child of c, while c is descendant of root in the chain
+    // Make root a child of c, so when deleting root -> ... -> c,
+    // c's children include root (cycle), triggering seen-guard.
     mappings["root"]!.parent = "c";
 
     mappings = deleteNode(mappings, "root");
 
     expect(warnSpy).toHaveBeenCalled();
-    // Should still delete everything reachable without hanging
     expect(Object.keys(mappings).length).toBe(0);
 
     warnSpy.mockRestore();
@@ -408,37 +411,28 @@ describe("makeRoot", () => {
   });
 
   test("detaches from parent but preserves subtree; rewrites root for descendants", () => {
-    // before: root -> a -> b -> c
     expect(mappings["a"]!.child).toBe("b");
     expect(mappings["b"]!.child).toBe("c");
     expect(mappings["c"]!.parent).toBe("b");
 
     mappings = makeRoot(mappings, "b");
 
-    // b is now a root
     expect(mappings["b"]!.parent).toBeUndefined();
     expect(mappings["b"]!.root).toBe("b");
 
-    // parent detached
     expect(mappings["a"]!.child).toBeUndefined();
 
-    // subtree preserved
     expect(mappings["b"]!.child).toBe("c");
     expect(mappings["c"]!.parent).toBe("b");
-
-    // descendants re-rooted
     expect(mappings["c"]!.root).toBe("b");
 
-    // ancestors unchanged
     expect(mappings["root"]!.root).toBe("root");
     expect(mappings["a"]!.root).toBe("root");
 
-    // integration: conversation from new root is just [c]
     expect(getConversation(mappings, "b").map((m) => m.id)).toEqual(["c"]);
   });
 
   test("re-roots branching descendants (via getChildren traversal)", () => {
-    // Add a branching child under b that is NOT in the child chain
     mappings["b2"] = createMessage("b2", "b");
     mappings["b2"]!.root = "root";
 
@@ -459,9 +453,6 @@ describe("makeRoot", () => {
 describe("addNode", () => {
   let mappings: Record<string, MessageNode>;
 
-  const d1 = new Date("2020-01-01T00:00:00.000Z");
-  const d2 = new Date("2020-01-02T00:00:00.000Z");
-
   beforeEach(() => {
     mappings = makeLinearMappings();
   });
@@ -476,16 +467,18 @@ describe("addNode", () => {
 
   test("computes root from parent chain (ignores provided root)", () => {
     mappings = addNode(mappings, "n1", "assistant", "x", "WRONG_ROOT", "c", undefined);
-    expect(mappings["n1"]!.root).toBe("root"); // derived from getRoot(c)
+    expect(mappings["n1"]!.root).toBe("root");
   });
 
   test("creates a root node when parent is undefined (root becomes id)", () => {
-    mappings = addNode(mappings, "r2", "user", "hello", "root", undefined, undefined, d1, d2);
+    const md = { createdAt: "2020-01-01", updatedAt: "2020-01-02" } as Record<string, any>;
+    mappings = addNode(mappings, "r2", "user", "hello", "root", undefined, undefined, md);
 
     expect(mappings["r2"]).toBeDefined();
     expect(mappings["r2"]!.root).toBe("r2");
     expect(mappings["r2"]!.parent).toBeUndefined();
     expect(mappings["r2"]!.child).toBeUndefined();
+    expect(mappings["r2"]!.metadata).toEqual(md);
   });
 
   test("when parent exists, root is derived even if root param is undefined", () => {
@@ -495,10 +488,12 @@ describe("addNode", () => {
   });
 
   test("links provided child back to new node (sets child's parent)", () => {
-    mappings = addNode(mappings, "x", "assistant", "mid", "root", "b", "c", d1, d2);
+    const md = { kind: "insert-mid" } as Record<string, any>;
+    mappings = addNode(mappings, "x", "assistant", "mid", "root", "b", "c", md);
 
     expect(mappings["x"]!.parent).toBe("b");
     expect(mappings["x"]!.child).toBe("c");
+    expect(mappings["x"]!.metadata).toEqual(md);
     expect(mappings["b"]!.child).toBe("x");
     expect(mappings["c"]!.parent).toBe("x");
   });
@@ -526,14 +521,14 @@ describe("addNode", () => {
 
     expect(warnSpy).toHaveBeenCalled();
     expect(mappings["x"]).toBeUndefined();
-    expect(mappings["b"]!.child).toBe(before); // no partial mutation now
+    expect(mappings["b"]!.child).toBe(before);
     warnSpy.mockRestore();
   });
 
-  test("persists createTime and updateTime parameters", () => {
-    mappings = addNode(mappings, "t", "assistant", "time", "root", "c", undefined, d1, d2);
-    expect(mappings["t"]!.createTime).toBe(d1);
-    expect(mappings["t"]!.updateTime).toBe(d2);
+  test("persists metadata parameter", () => {
+    const md = { foo: 1, bar: "baz" } as Record<string, any>;
+    mappings = addNode(mappings, "t", "assistant", "meta", "root", "c", undefined, md);
+    expect(mappings["t"]!.metadata).toEqual(md);
   });
 
   test("sets parent.child to new node even if parent already had a child (overwrites)", () => {
@@ -547,32 +542,26 @@ describe("addNode", () => {
 describe("branchNode", () => {
   let mappings: Record<string, MessageNode>;
 
-  const d1 = new Date("2020-01-01T00:00:00.000Z");
-  const d2 = new Date("2020-01-02T00:00:00.000Z");
-
   beforeEach(() => {
     mappings = makeLinearMappings();
   });
 
   test("creates a sibling under the same parent and makes it the active child", () => {
-    // b's parent is a
     expect(mappings["b"]!.parent).toBe("a");
     expect(mappings["a"]!.child).toBe("b");
 
-    mappings = branchNode(mappings, "b", "b2", "hello", d1, d2);
+    const md = { branched: true } as Record<string, any>;
+    mappings = branchNode(mappings, "b", "b2", "hello", md);
 
     expect(mappings["b2"]).toBeDefined();
     expect(mappings["b2"]!.parent).toBe("a");
     expect(mappings["b2"]!.root).toBe("root");
     expect(mappings["b2"]!.role).toBe(mappings["b"]!.role);
     expect(mappings["b2"]!.content).toBe("hello");
-    expect(mappings["b2"]!.createTime).toBe(d1);
-    expect(mappings["b2"]!.updateTime).toBe(d2);
+    expect(mappings["b2"]!.metadata).toEqual(md);
 
-    // parent now points to sibling as active branch
     expect(mappings["a"]!.child).toBe("b2");
 
-    // original node remains intact
     expect(mappings["b"]!.parent).toBe("a");
     expect(mappings["b"]!.child).toBe("c");
   });
@@ -581,7 +570,7 @@ describe("branchNode", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const before = mappings;
 
-    const next = branchNode(mappings, "ghost", "x", "nope", d1, d2);
+    const next = branchNode(mappings, "ghost", "x", "nope");
 
     expect(warnSpy).toHaveBeenCalled();
     expect(next).toBe(before);
@@ -592,7 +581,7 @@ describe("branchNode", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const before = mappings;
 
-    const next = branchNode(mappings, "b", "c", "dup", d1, d2); // "c" already exists
+    const next = branchNode(mappings, "b", "c", "dup");
 
     expect(warnSpy).toHaveBeenCalled();
     expect(next).toBe(before);
@@ -603,10 +592,9 @@ describe("branchNode", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const before = mappings;
 
-    // corrupt mapping: b claims parent "missing", but node not present
     mappings["b"]!.parent = "missing";
 
-    const next = branchNode(mappings, "b", "b2", "x", d1, d2);
+    const next = branchNode(mappings, "b", "b2", "x");
 
     expect(warnSpy).toHaveBeenCalled();
     expect(next).toBe(before);
@@ -616,14 +604,15 @@ describe("branchNode", () => {
   test("branches a root node by creating a new root sibling (parent undefined => new root)", () => {
     expect(mappings["root"]!.parent).toBeUndefined();
 
-    mappings = branchNode(mappings, "root", "r2", "hi", d1, d2);
+    mappings = branchNode(mappings, "root", "r2", "hi", { rootBranch: true } as Record<string, any>);
 
     expect(mappings["r2"]).toBeDefined();
     expect(mappings["r2"]!.parent).toBeUndefined();
     expect(mappings["r2"]!.child).toBeUndefined();
-    expect(mappings["r2"]!.root).toBe("r2"); // addNode makes it a root when parent undefined
+    expect(mappings["r2"]!.root).toBe("r2");
     expect(mappings["r2"]!.role).toBe(mappings["root"]!.role);
     expect(mappings["r2"]!.content).toBe("hi");
+    expect(mappings["r2"]!.metadata).toEqual({ rootBranch: true });
   });
 
   test("preserves referential equality for no-op failure cases", () => {
@@ -643,33 +632,30 @@ describe("branchNode", () => {
 describe("updateContent", () => {
   let mappings: Record<string, MessageNode>;
 
-  const d1 = new Date("2020-01-01T00:00:00.000Z");
-  const d2 = new Date("2020-01-02T00:00:00.000Z");
-
   beforeEach(() => {
     mappings = makeLinearMappings();
-    // make times deterministic
-    mappings["b"]!.updateTime = d1;
+    mappings["b"]!.metadata = { updatedAt: "t1", n: 1 };
   });
 
-  test("replaces content and updates updateTime", () => {
-    const next = updateContent(mappings, "b", "NEW", d2);
+  test("replaces content and can update metadata", () => {
+    const md2 = { updatedAt: "t2", n: 2 } as Record<string, any>;
+    const next = updateContent(mappings, "b", "NEW", md2);
 
     expect(next).not.toBe(mappings);
     expect(next["b"]!.content).toBe("NEW");
-    expect(next["b"]!.updateTime).toBe(d2);
+    expect(next["b"]!.metadata).toEqual(md2);
 
-    // other nodes untouched
+    // other nodes untouched (same object refs)
     expect(next["a"]).toBe(mappings["a"]);
   });
 
   test("supports functional updater for strings", () => {
-    const next = updateContent(mappings, "b", (prev) => prev + "++", d2);
+    const next = updateContent(mappings, "b", (prev) => prev + "++", { updatedAt: "t2" } as Record<string, any>);
     expect(next["b"]!.content).toBe("b++");
-    expect(next["b"]!.updateTime).toBe(d2);
+    expect(next["b"]!.metadata).toEqual({ updatedAt: "t2" });
   });
 
-  test("supports functional updater for non-string types", () => {
+  test("supports functional updater for non-string content types", () => {
     type Obj = { n: number; xs: number[] };
 
     const objMappings: Record<string, MessageNode<Obj>> = {
@@ -680,8 +666,7 @@ describe("updateContent", () => {
         root: "root",
         parent: undefined,
         child: "a",
-        createTime: d1,
-        updateTime: d1,
+        metadata: { updatedAt: "t1" },
       },
       a: {
         id: "a",
@@ -690,22 +675,26 @@ describe("updateContent", () => {
         root: "root",
         parent: "root",
         child: undefined,
-        createTime: d1,
-        updateTime: d1,
+        metadata: { updatedAt: "t1" },
       },
     };
 
-    const next = updateContent(objMappings, "a", (prev) => ({ n: prev.n + 1, xs: [...prev.xs, 2] }), d2);
+    const next = updateContent(
+      objMappings,
+      "a",
+      (prev) => ({ n: prev.n + 1, xs: [...prev.xs, 2] }),
+      (prev) => ({ ...(prev ?? {}), updatedAt: "t2" })
+    );
 
     expect(next["a"]!.content).toEqual({ n: 2, xs: [1, 2] });
-    expect(next["a"]!.updateTime).toBe(d2);
+    expect(next["a"]!.metadata).toEqual({ updatedAt: "t2" });
   });
 
   test("warns and returns original mappings if node missing", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const before = mappings;
 
-    const next = updateContent(mappings, "ghost", "x", d2);
+    const next = updateContent<string, Record<string, any>>(mappings, "ghost", "x", { updatedAt: "t2" } as Record<string, any>);
 
     expect(warnSpy).toHaveBeenCalled();
     expect(next).toBe(before);
@@ -713,25 +702,30 @@ describe("updateContent", () => {
     warnSpy.mockRestore();
   });
 
-  test("returns original mappings when content and updateTime are unchanged (no-op)", () => {
+  test("returns original mappings when content is unchanged (no-op), even if metadata differs", () => {
     const before = mappings;
-    const next = updateContent(mappings, "b", "b", d1); // same content, same updateTime
+    const next = updateContent<string, Record<string, any>>(mappings, "b", "b", { updatedAt: "t2" } as Record<string, any>);
     expect(next).toBe(before);
   });
 
-  test("returns new mappings when content is same but updateTime differs", () => {
-    const before = mappings;
-    const next = updateContent(mappings, "b", "b", d2); // same content, different updateTime
-    expect(next).not.toBe(before);
-    expect(next["b"]!.content).toBe("b");
-    expect(next["b"]!.updateTime).toBe(d2);
+  test("does not overwrite metadata when metadata param is undefined", () => {
+    const beforeMd = mappings["b"]!.metadata;
+    const next = updateContent<string, Record<string, any>>(mappings, "b", "changed", undefined);
+
+    expect(next).not.toBe(mappings);
+    expect(next["b"]!.content).toBe("changed");
+    expect(next["b"]!.metadata).toBe(beforeMd);
   });
 
-  test("returns new mappings when updateTime same but content differs", () => {
-    const before = mappings;
-    const next = updateContent(mappings, "b", "changed", d1);
-    expect(next).not.toBe(before);
+  test("supports functional metadata updater (when metadata exists)", () => {
+    const next = updateContent<string, Record<string, any>>(
+      mappings,
+      "b",
+      "changed",
+      (prev) => ({ ...(prev ?? {}), n: (prev?.n ?? 0) + 1, updatedAt: "t2" }) as Record<string, any>
+    );
+
     expect(next["b"]!.content).toBe("changed");
-    expect(next["b"]!.updateTime).toBe(d1);
+    expect(next["b"]!.metadata).toEqual({ updatedAt: "t2", n: 2 });
   });
 });

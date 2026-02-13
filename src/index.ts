@@ -275,6 +275,13 @@ export function deleteNode<C = string, M = Record<string, any>>(
 
   return updateMap(mappings, (draft) => {
     const seen = new Set<string>();
+
+    const parentId = draft[id]?.parent;
+    if (parentId && draft[parentId]?.child === id) {
+      draft[parentId] = cloneNode(draft[parentId]!);
+      draft[parentId].child = Object.values(draft).find((n) => n.parent === parentId && n.id !== id)?.id;
+    }
+
     _deleteNodeInternal(draft, id, seen);
   });
 }
