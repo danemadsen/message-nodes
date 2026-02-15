@@ -99,14 +99,15 @@ export function getConversation<C = string, M = Record<string, any>>(
     return [];
   }
 
-  if (!rootNode.child) return [];
+  const conversation: Array<MessageNode<C, M>> = [rootNode];
+  const seen = new Set<string>([rootNode.id]);
 
-  const conversation: Array<MessageNode<C, M>> = [];
-  const seen = new Set<string>();
+  let currentId = rootNode.child;
 
-  let current = getNode(mappings, rootNode.child);
+  while (currentId) {
+    const current = getNode(mappings, currentId);
+    if (!current) break;
 
-  while (current) {
     if (seen.has(current.id)) {
       console.warn(`Cycle detected in conversation at ID: ${current.id}`);
       break;
@@ -114,7 +115,7 @@ export function getConversation<C = string, M = Record<string, any>>(
     seen.add(current.id);
 
     conversation.push(current);
-    current = current.child ? getNode(mappings, current.child) : undefined;
+    currentId = current.child;
   }
 
   return conversation;

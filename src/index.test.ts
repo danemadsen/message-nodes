@@ -108,14 +108,14 @@ describe("getConversation", () => {
     mappings = makeLinearMappings();
   });
 
-  test("returns linear thread from root", () => {
+  test("returns linear thread from root (including root)", () => {
     const convo = getConversation(mappings, "root");
-    expect(convo.map((m) => m.id)).toEqual(["a", "b", "c"]);
+    expect(convo.map((m) => m.id)).toEqual(["root", "a", "b", "c"]);
   });
 
-  test("returns empty if root has no child", () => {
+  test("returns [root] if root has no child", () => {
     mappings["loner"] = createMessage("loner"); // root=loner, no child
-    expect(getConversation(mappings, "loner")).toEqual([]);
+    expect(getConversation(mappings, "loner").map((m) => m.id)).toEqual(["loner"]);
   });
 
   test("returns empty and warns if root id not in mappings", () => {
@@ -128,7 +128,7 @@ describe("getConversation", () => {
   test("stops traversal when child pointer is missing in mappings", () => {
     mappings["b"]!.child = "zzz";
     const convo = getConversation(mappings, "root");
-    expect(convo.map((m) => m.id)).toEqual(["a", "b"]);
+    expect(convo.map((m) => m.id)).toEqual(["root", "a", "b"]);
   });
 
   test("detects a cycle and warns (does not infinite loop)", () => {
@@ -138,7 +138,7 @@ describe("getConversation", () => {
 
     const convo = getConversation(mappings, "root");
 
-    expect(convo.map((m) => m.id)).toEqual(["a", "b", "c"]);
+    expect(convo.map((m) => m.id)).toEqual(["root", "a", "b", "c"]);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
@@ -429,7 +429,7 @@ describe("makeRoot", () => {
     expect(mappings["root"]!.root).toBe("root");
     expect(mappings["a"]!.root).toBe("root");
 
-    expect(getConversation(mappings, "b").map((m) => m.id)).toEqual(["c"]);
+    expect(getConversation(mappings, "b").map((m) => m.id)).toEqual(["b", "c"]);
   });
 
   test("re-roots branching descendants (via getChildren traversal)", () => {
