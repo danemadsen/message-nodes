@@ -778,9 +778,9 @@ describe("updateContent", () => {
     warnSpy.mockRestore();
   });
 
-  test("returns original mappings when content is unchanged (no-op), even if metadata differs", () => {
+  test("returns original mappings when content is unchanged (no-op)", () => {
     const before = mappings;
-    const next = updateContent<string, Record<string, any>>(mappings, "b", "b", { updatedAt: "t2" } as Record<string, any>);
+    const next = updateContent<string, Record<string, any>>(mappings, "b", "b");
     expect(next).toBe(before);
   });
 

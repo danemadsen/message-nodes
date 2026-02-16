@@ -584,7 +584,7 @@ export function updateContent<C = string, M = Record<string, any>>(
   mappings: Readonly<Record<string, MessageNode<C, M>>>,
   id: string,
   content: C | ((prev: C) => C),
-  metadata?: M | ((prev: M) => M) | undefined
+  metadata?: M | ((prev: M | undefined) => M) | undefined
 ): Record<string, MessageNode<C, M>> {
   const node0 = mappings[id];
   if (!node0) {
@@ -597,26 +597,31 @@ export function updateContent<C = string, M = Record<string, any>>(
       ? (content as (prev: C) => C)(node0.content)
       : content;
 
-  // no-op guard
-  if (Object.is(node0.content, newContent)) {
-    return mappings as Record<string, MessageNode<C, M>>;
-  }
+  const metadataProvided = metadata !== undefined;
 
   const newMetadata =
     typeof metadata === "function"
       ? (metadata as (prev: M | undefined) => M)(node0.metadata)
       : metadata;
 
-  const metadataUnchanged = newMetadata === undefined || Object.is(node0.metadata, newMetadata);
+  const contentUnchanged = Object.is(node0.content, newContent);
+  const metadataUnchanged = !metadataProvided || Object.is(node0.metadata, newMetadata);
+
+  // no-op only if BOTH are unchanged
+  if (contentUnchanged && metadataUnchanged) {
+    return mappings as Record<string, MessageNode<C, M>>;
+  }
 
   return updateMap<C, M>(mappings, (draft) => {
     const node = draft[id];
     if (!node) return;
-    draft[id] = cloneNode<C, M>(node);
-    draft[id]!.content = newContent;
-    if (!metadataUnchanged) {
-      draft[id]!.metadata = newMetadata;
-    }
+
+    const next = cloneNode<C, M>(node);
+
+    if (!contentUnchanged) next.content = newContent;
+    if (!metadataUnchanged && metadataProvided) next.metadata = newMetadata as M;
+
+    draft[id] = next;
   });
 }
 
