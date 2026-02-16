@@ -156,6 +156,59 @@ export function getAncestry<C = string, M = Record<string, any>>(
 }
 
 /**
+ * Returns a new mappings object containing ONLY:
+ * - the node with id === rootId
+ * - all descendants connected to it (via parent -> children links), including branches
+ *
+ * This does NOT include other roots or their lineages unless they are actually connected
+ * (i.e., reachable as descendants of rootId).
+ */
+export function getRootMapping<C = string, M = Record<string, any>>(
+  mappings: Record<string, MessageNode<C, M>>,
+  root: string
+): Record<string, MessageNode<C, M>> {
+  const rootNode = mappings[root];
+  if (!rootNode) {
+    console.warn(`Root node with ID: ${root} does not exist.`);
+    return {};
+  }
+
+  // Build parent -> children index once (O(n)), so traversal is O(size_of_subtree).
+  const childrenByParent: Record<string, string[]> = {};
+  for (const node of Object.values(mappings)) {
+    if (!node.parent) continue;
+    // Only index edges where the parent exists in the map
+    if (!mappings[node.parent]) continue;
+    (childrenByParent[node.parent] ??= []).push(node.id);
+  }
+
+  const out: Record<string, MessageNode<C, M>> = {};
+  const seen = new Set<string>();
+  const stack: string[] = [root];
+
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) {
+      console.warn(`Cycle detected in root mapping at ID: ${id}`);
+      continue;
+    }
+    seen.add(id);
+
+    const node = mappings[id];
+    if (!node) continue;
+
+    out[id] = node;
+
+    const kids = childrenByParent[id];
+    if (kids) {
+      for (const kidId of kids) stack.push(kidId);
+    }
+  }
+
+  return out;
+}
+
+/**
  * Retrieves all direct child messages of a given message ID.
  * @param mappings A record mapping message IDs to MessageNode objects.
  * @param id The ID of the parent message.

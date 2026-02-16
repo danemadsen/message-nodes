@@ -7,6 +7,7 @@ import {
   getConversation,
   getNode,
   getRoot,
+  getRootMapping,
   getRoots,
   hasNode,
   lastChild,
@@ -178,6 +179,81 @@ describe("getAncestry", () => {
     // c -> b -> a then would go back to c, so it stops before repeating c
     expect(ancestry.map((m) => m.id)).toEqual(["c", "b", "a"]);
     expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("getRootMapping", () => {
+  test("returns only the subtree connected to the given root (linear)", () => {
+    const mappings = makeLinearMappings(); // root -> a -> b -> c
+
+    const sub = getRootMapping(mappings, "root");
+
+    expect(Object.keys(sub).sort()).toEqual(["root", "a", "b", "c"].sort());
+  });
+
+  test("excludes other roots and their lineages", () => {
+    const mappings = makeLinearMappings();
+    // Add separate root: r2 -> r2a
+    mappings["r2"] = createMessage("r2", undefined, "r2a", "r2");
+    mappings["r2a"] = createMessage("r2a", "r2", undefined, "r2");
+
+    const sub = getRootMapping(mappings, "root");
+
+    expect(Object.keys(sub).sort()).toEqual(["root", "a", "b", "c"].sort());
+    expect(sub["r2"]).toBeUndefined();
+    expect(sub["r2a"]).toBeUndefined();
+  });
+
+  test("includes branching descendants under the root", () => {
+    const mappings = makeLinearMappings();
+    // Create a branch: a -> b2 -> b2c (sibling of b under a)
+    mappings["b2"] = createMessage("b2", "a", "b2c", "root");
+    mappings["b2c"] = createMessage("b2c", "b2", undefined, "root");
+
+    const sub = getRootMapping(mappings, "root");
+
+    expect(Object.keys(sub).sort()).toEqual(
+      ["root", "a", "b", "c", "b2", "b2c"].sort()
+    );
+  });
+
+  test("does not include nodes that merely claim the same root but are not connected", () => {
+    const mappings = makeLinearMappings();
+    // x "claims" root but is disconnected (no parent link into the subtree)
+    mappings["x"] = createMessage("x", undefined, undefined, "root");
+
+    const sub = getRootMapping(mappings, "root");
+
+    expect(sub["x"]).toBeUndefined();
+    expect(Object.keys(sub).sort()).toEqual(["root", "a", "b", "c"].sort());
+  });
+
+  test("warns and returns empty object for missing rootId", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const mappings = makeLinearMappings();
+
+    const sub = getRootMapping(mappings, "ghost-root");
+
+    expect(sub).toEqual({});
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  test("detects cycles in descendant graph and does not infinite loop", () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const mappings = makeLinearMappings();
+
+    // Create a parent-cycle: root becomes child of c, forming:
+    // root -> a -> b -> c -> root
+    mappings["root"]!.parent = "c";
+
+    const sub = getRootMapping(mappings, "root");
+
+    expect(Object.keys(sub).sort()).toEqual(["root", "a", "b", "c"].sort());
+    expect(warnSpy).toHaveBeenCalled();
+
     warnSpy.mockRestore();
   });
 });
